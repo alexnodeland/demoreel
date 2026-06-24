@@ -32,13 +32,14 @@ fields always win.
 - [CursorConfig](#cursorconfig)
 - [CaptionConfig](#captionconfig)
 - [AudioConfig](#audioconfig) · [SfxConfig](#sfxconfig)
-- [BrandConfig](#brandconfig)
+- [BrandConfig](#brandconfig) · [Brand kits](#brand-kits)
 - [Prelude](#prelude)
 - [TransitionConfig](#transitionconfig)
 - [VoiceConfig](#voiceconfig)
 - [Card (intro / outro)](#card-intro--outro)
 - [Templating](#templating)
 - [Presets](#presets)
+- [CLI: scaffolding & watch](#cli-scaffolding--watch)
 
 ---
 
@@ -57,6 +58,7 @@ first scene must `goto` a URL, or a top-level `url` must be set (validated after
 | `headless` | `bool` | `true` | Run the browser headless (CLI `--headed` flips this off). |
 | `storage_state` | `str \| null` | `null` | Path to a Playwright `storage_state` JSON (cookies/localStorage) for authenticated demos. |
 | `preset` | `str` | `"studio"` | Named theme preset deep-merged *under* this spec: `studio`, `dark`, `light`, `minimal`. |
+| `brand_kit` | `str \| null` | `null` | Path to a reusable [brand kit](#brand-kits) YAML (resolved relative to the spec file), merged between preset and spec. |
 | `quality` | [`Quality`](#quality) | `Quality()` | Output resolution + capture scale. |
 | `frame` | [`FrameConfig`](#frameconfig) | `FrameConfig()` | Studio framing: backdrop, padding, shadow, chrome, device shell. |
 | `camera` | [`CameraConfig`](#cameraconfig) | `CameraConfig()` | Auto zoom-to-click behavior and easing. |
@@ -132,7 +134,7 @@ Setting two or more of these raises a validation error (`use one action per scen
 | `focus` | `str \| null` | `null` | Explicit selector to frame the zoom on (overrides the inferred focus point). |
 | `hold` | `float \| null` | `null` | Hold the final frame N extra seconds after the action. |
 | `pause` | `float \| null` | `null` | Extra silent dwell *before* the action runs. |
-| `transition` | `str \| null` | `null` | Override the transition *into* this scene: `cut` \| `crossfade` \| `dip`. |
+| `transition` | `str \| null` | `null` | Override the transition *into* this scene. One of `cut` \| `crossfade` \| `dip` \| `wipe` \| `push` \| `zoom_blur` (see [TransitionConfig](#transitionconfig)). |
 
 **Zoom resolution order** (`effective_zoom`): `no_zoom` → no zoom; else explicit `zoom`;
 else if `camera.auto_zoom` and a focus point exists → `camera.zoom`; else no zoom.
@@ -363,6 +365,70 @@ Logo watermark + lower-third. `extra="forbid"`.
 
 ---
 
+## Brand kits
+
+A **brand kit** is a reusable look bundle — an accent color, a gradient backdrop palette, a
+logo + watermark settings, a caption font, and the lower-third name/title — that a team
+applies across many demos. Load one from a top-level `brand_kit` directive; the path
+resolves relative to the spec file.
+
+```yaml
+brand_kit: acme.brand.yaml
+```
+
+### Kit fields
+
+A kit is a flat YAML document. Every field is optional — a sparse kit only fills the keys
+it sets. `extra="forbid"`.
+
+| Field | Type | Maps to spec leaf |
+|-------|------|-------------------|
+| `accent` | `str` (hex) | `brand.color`, `captions.accent`, **and** `cursor.color` |
+| `background` | `[from, to]` (hex pair) | `frame.background.colors` (with `angle: 135`) |
+| `logo` | `str` | `brand.logo` |
+| `font` | `str` | `captions.font` |
+| `name` | `str` | `brand.name` |
+| `title` | `str` | `brand.title` |
+| `watermark` | `bool` | `brand.watermark` |
+| `watermark_position` | `str` | `brand.watermark_position` |
+| `watermark_opacity` | `float` | `brand.watermark_opacity` |
+
+A single `accent` fans out to all three accent leaves (cursor, captions, brand); a
+`background` `[from, to]` pair becomes the frame's gradient backdrop at a 135° angle.
+
+### Merge precedence
+
+The kit is merged **between the preset and the spec** — it fills gaps under the spec and
+overrides the preset. Highest wins:
+
+```
+spec  >  brand kit  >  preset
+```
+
+So a spec that sets `brand.title` or `captions.accent` overrides whatever the kit (or
+preset) provides for those leaves, while the kit still beats the preset for every leaf the
+spec leaves unset.
+
+### Example `acme.brand.yaml`
+
+```yaml
+accent: "#FF6B00"                  # brand.color + captions.accent + cursor.color
+background: ["#1A1206", "#0A0703"] # frame gradient backdrop [from, to] @135°
+logo: ./assets/acme-logo.png       # corner watermark logo
+font: Inter                        # caption font family
+name: Acme                         # lower-third name
+title: Product Demo                # lower-third title
+watermark: true
+watermark_position: bottom-right
+watermark_opacity: 0.5
+```
+
+See `engine/examples/brand/acme.brand.yaml` (the kit) and
+`engine/examples/brand/with-kit.yaml` (a spec referencing it, overriding two fields to show
+the spec wins over the kit).
+
+---
+
 ## Prelude
 
 Determinism + stabilization applied before/while recording — so a real, live app records
@@ -383,12 +449,30 @@ identically every time. `extra="forbid"`.
 ## TransitionConfig
 
 Default transition between scenes (overridable per-scene via `scene.transition`).
-`extra="forbid"`.
+`extra="forbid"`. Applies at the intro→content→outro segment boundaries.
 
 | Field | Type | Default | Meaning |
 |-------|------|---------|---------|
-| `type` | `"cut" \| "crossfade" \| "dip"` | `"crossfade"` | Transition style: hard cut, crossfade, or dip-to-color. |
-| `duration` | `float` | `0.5` | Transition duration in seconds. |
+| `type` | `"cut" \| "crossfade" \| "dip" \| "wipe" \| "push" \| "zoom_blur"` | `"crossfade"` | Transition style (see table below). |
+| `duration` | `float` | `0.5` | Transition duration in seconds — the overlap length for overlapping types. |
+
+### Transition types
+
+| Type | Behavior | Overlaps? |
+|------|----------|-----------|
+| `cut` | Hard cut, no blend. Clips play back-to-back. | no |
+| `dip` | Dip to color: the outgoing clip fades out and the incoming fades in. | no |
+| `crossfade` | The incoming clip fades in over the outgoing (**default**). | yes |
+| `wipe` | A hard-edged mask sweeps left→right, revealing the incoming clip. | yes |
+| `push` | The outgoing clip slides out to the left while the incoming slides in from the right (both visible mid-transition). | yes |
+| `zoom_blur` | A crossfade with a fast `1.08 → 1.0` scale ramp on the incoming clip (a quick "whip-zoom"). | yes |
+
+Overlapping types (`crossfade`, `wipe`, `push`, `zoom_blur`) overlap adjacent segments by
+`duration`, shortening the timeline accordingly; `cut` and `dip` do not overlap.
+
+```yaml
+transition: { type: push, duration: 0.4 }
+```
 
 ---
 
@@ -473,6 +557,75 @@ stay small. Default: `studio`. An unknown preset name falls back to `studio`.
 | `dark` | Neutral untinted dark, teal accent. | gradient `#15151A→#070709` @135°; teal `#5EE0C8` cursor/caption/brand accent. |
 | `light` | Light Studio look for product/leadership audiences. | gradient `#EEF1F6→#D9DEE8` @135°; softer shadow (`shadow_opacity: 0.28`); dark caption text on white box; indigo `#4338CA` accents. |
 | `minimal` | Edge-to-edge, no chrome, no backdrop — fast and neutral. | `full_bleed` frame, `chrome: none`, solid `#0B0B12` background; cubic easing, no idle drift; watermark off. |
+
+---
+
+## CLI: scaffolding & watch
+
+### `demoreel init` — scaffold a spec
+
+`demoreel init` writes a ready-to-render spec from a **template + answers** (not a verbatim
+copy of a starter file). Every template produces a spec that `demoreel validate` accepts.
+
+| Template | For |
+|----------|-----|
+| `minimal` | The smallest valid spec — a title card, two scenes, an outro. Start here. |
+| `tour` | A multi-scene guided walkthrough (intro → chapters → callouts → outro), landscape 1080p. |
+| `social` | A 9:16 vertical cut inside a phone frame — Reels / Shorts / TikTok. |
+| `hero` | A studio-polished hero reel (named chapter scenes, typed query, CTA outro) for a README/site. |
+
+**Flags** (each overrides the template default only when provided):
+
+| Flag | Effect |
+|------|--------|
+| `--template` | Template to scaffold from (`minimal`, `tour`, `social`, `hero`). |
+| `--title` | Demo title; also seeds the default output filename. |
+| `--url` | Starting URL. |
+| `--preset` | Theme preset (`studio`, `dark`, `light`, `minimal`). |
+| `--resolution` | Output resolution (a named preset or `WxH`). |
+| `--device` | Device shell (`none`, `phone`, `tablet`). |
+| `--voice-engine` | TTS engine for narration. |
+| `--transition` | Default scene transition. |
+| `-o`, `--output` | Output spec path (otherwise derived from a slug of the title). |
+| `-y`, `--yes` | Skip prompts; build non-interactively from the template + flags. |
+
+`init` runs **interactively** — prompting for each value with defaults and validating
+choice-backed answers — when stdin is a TTY and `--yes` was not passed. Otherwise it builds
+non-interactively from the template and flags. The output filename derives from a slug of
+the title (`"My App"` → `my-app.yaml`) unless `--output` is given.
+
+```bash
+demoreel init demo.yaml --template social --title "My App" --url https://myapp.com
+demoreel validate demo.yaml   # parse + scene plan (fast, no browser)
+demoreel render   demo.yaml   # full render
+```
+
+### `demoreel watch` — re-render on change
+
+`demoreel watch spec.yaml` keeps a fast `--preview` render in sync with the spec as you
+edit. It renders once immediately, then re-renders whenever the spec **or a referenced
+local asset** changes.
+
+```bash
+demoreel watch spec.yaml [--interval 1.0] [--engine ENGINE] [-o OUT] [--set K=V]
+```
+
+| Flag | Default | Effect |
+|------|---------|--------|
+| `--interval` | `1.0` | Poll interval in seconds. |
+| `--engine` | — | Override the voice engine for the preview. |
+| `-o`, `--output` | — | Preview output path. |
+| `--set` | — | Template overrides (`KEY=VALUE`, repeatable), as for `render`. |
+
+It watches the spec file plus the **local** files it points at: `audio.music`, `brand.logo`,
+a `brand_kit`, `prelude.inject_css` / `prelude.inject_js` file paths, and a `file://` page
+URL. Remote `http(s)` URLs are not watched. The watch list is re-evaluated each tick, so
+adding an asset reference is picked up without a restart.
+
+Watch mode is polling-based (no extra dependencies) — it compares file modification times
+on the interval. A broken or mid-edit spec does **not** kill the watcher: the failed render
+is logged and watching continues until the spec parses again. `Ctrl-C` stops gracefully
+(exit `0`).
 
 ---
 

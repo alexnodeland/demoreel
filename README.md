@@ -44,8 +44,17 @@ the camera zooming to each click, an animated cursor, a voiceover, and synced ca
 - 🔁 **Templating** — `${VAR}` / `${VAR:-default}` + `--set KEY=VALUE`, so one spec renders
   a demo per tenant, release, or persona.
 - 🛡️ **Live-data redaction** — scrub real names/numbers/emails on camera, layout intact.
-- 🎨 **Brand kit** — logo watermark, lower-third, outro CTA, and `demoreel theme <logo>` to
-  derive a palette from your logo. **Themes:** `studio` · `dark` · `light` · `minimal`.
+- 🎞️ **Scene transitions** — per-scene `transition: { type, duration }`: `cut`, `crossfade`,
+  `dip`, `wipe`, `push`, `zoom_blur` (a whip-zoom) — blending between beats and the intro/outro.
+- 🎨 **Brand kits** — drop a reusable `brand_kit: kit.yaml` (accent, gradient, logo, watermark,
+  font, lower-third) on any spec; `demoreel theme <logo>` derives a palette from your logo.
+  Precedence is **spec > kit > preset**. **Themes:** `studio` · `dark` · `light` · `minimal`.
+- 🧰 **`init` scaffolder** — `demoreel init` writes a render-ready spec from a template
+  (`minimal`/`tour`/`social`/`hero`) — interactively, or non-interactively from flags.
+- 👀 **Watch mode** — `demoreel watch` re-renders a fast preview whenever the spec or a
+  referenced local asset (music, logo, brand kit, `file://` page) changes.
+- 🤖 **PR preview renders** — every pull request auto-renders an offline example and posts a
+  sticky comment linking the `demo-preview` artifact (mp4 + GIF + HTML player). Never blocks merge.
 
 No system `ffmpeg` needed (bundled via `imageio-ffmpeg`).
 
@@ -69,9 +78,10 @@ the skill reads and applies it (preset/branding, voice, default URL, which flows
 ```bash
 cd engine
 uv sync --extra piper && uv run playwright install chromium
-uv run demoreel init my-demo.yaml      # starter spec
+uv run demoreel init my-demo.yaml --template tour  # scaffold from a template (interactive without flags)
 uv run demoreel validate my-demo.yaml  # parse + scene plan (fast, no browser)
 uv run demoreel check    my-demo.yaml  # verify selectors against the live page
+uv run demoreel watch    my-demo.yaml  # auto re-preview on spec/asset change
 uv run demoreel render   my-demo.yaml -o out.mp4 --gif --player
 uv run demoreel doctor                 # check the environment is ready
 ```

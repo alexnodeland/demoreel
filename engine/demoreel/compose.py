@@ -29,6 +29,7 @@ from .subtitles import (
     write_transcript,
     write_vtt,
 )
+from .transitions import concat_segments, overlap_offset
 
 
 class ComposeError(RuntimeError):
@@ -47,7 +48,7 @@ def compose(
 ) -> Path:
     try:
         import cv2  # noqa: F401
-        from moviepy import CompositeVideoClip, VideoClip, VideoFileClip, concatenate_videoclips
+        from moviepy import CompositeVideoClip, VideoClip, VideoFileClip
     except ImportError as exc:  # pragma: no cover
         raise ComposeError(
             "compose deps missing. `pip install moviepy opencv-python-headless`."
@@ -145,16 +146,17 @@ def compose(
     if spec.outro:
         segments.append(brand.card_clip(spec, spec.outro, outro_wav))
 
-    final = _concat(segments, spec.transition, concatenate_videoclips)
+    final = concat_segments(segments, spec.transition)
 
-    # The content clip's true start on the final timeline depends on the transition: a
-    # crossfade overlaps each segment with its predecessor by `duration` (padding=-d), so
-    # the content actually begins `duration` earlier than the intro card's length implies.
-    # cut/dip don't overlap. Shift caption sidecars by the real offset so .srt/.vtt stay
-    # in sync with the audio in the mp4.
+    # The content clip's true start on the final timeline depends on the transition: an
+    # overlapping transition (crossfade/wipe/push/zoom_blur) overlaps each segment with its
+    # predecessor by `duration` (padding=-d), so the content actually begins `duration`
+    # earlier than the intro card's length implies. cut/dip don't overlap. overlap_offset()
+    # is the single source of truth. Shift caption sidecars by the real offset so .srt/.vtt
+    # stay in sync with the audio in the mp4.
     caption_offset = intro_offset
-    if intro_offset > 0 and spec.transition.type == "crossfade":
-        caption_offset = max(0.0, intro_offset - spec.transition.duration)
+    if intro_offset > 0:
+        caption_offset = max(0.0, intro_offset - overlap_offset(spec.transition))
 
     # encode ------------------------------------------------------------------------
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -271,37 +273,7 @@ def _group_words(words, max_chars):
     return lines
 
 
-# ------------------------------------------------------------------------ transitions
-
-
-def _concat(clips, tcfg, concatenate_videoclips):
-    if len(clips) == 1:
-        return clips[0]
-    if tcfg.type == "cut":
-        return concatenate_videoclips(clips, method="compose")
-    d = tcfg.duration
-    try:
-        if tcfg.type == "dip":
-            from moviepy.video.fx import FadeIn, FadeOut
-
-            out = []
-            for i, c in enumerate(clips):
-                fx = []
-                if i > 0:
-                    fx.append(FadeIn(d / 2))
-                if i < len(clips) - 1:
-                    fx.append(FadeOut(d / 2))
-                out.append(c.with_effects(fx) if fx else c)
-            return concatenate_videoclips(out, method="compose")
-        # crossfade
-        from moviepy.video.fx import CrossFadeIn
-
-        out = [clips[0]]
-        for c in clips[1:]:
-            out.append(c.with_effects([CrossFadeIn(d)]))
-        return concatenate_videoclips(out, method="compose", padding=-d)
-    except Exception:  # noqa: BLE001 - never fail the render on a transition
-        return concatenate_videoclips(clips, method="compose")
+# ------------------------------------------------------------------------ helpers
 
 
 def _scaled(size: int, out_h: int) -> int:

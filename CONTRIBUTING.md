@@ -33,7 +33,7 @@ demo/                         # the skill — what host repos consume
 ├── README.md                 # skill-facing overview
 ├── CONTRIBUTING.md           # you are here
 ├── site/                     # GitHub Pages landing source
-├── .github/workflows/        # ci.yml, release.yml, pages.yml
+├── .github/workflows/        # ci.yml, preview.yml, release.yml, pages.yml
 └── engine/                   # the Python package — all the code lives here
     ├── pyproject.toml        # deps, extras, dev group, ruff/pytest/pyright config
     ├── uv.lock               # committed on purpose — pins a reproducible set
@@ -115,22 +115,25 @@ uv run demoreel render examples/starter.yaml --preview   # fast low-res pass
 
 ## The test suite
 
-```bash
-uv run pytest                          # the default suite — fast & dependency-light
-uv run pytest -m "browser or slow"     # the heavy integration suite (needs Chromium + ffmpeg)
-```
-
 The default `uv run pytest` **excludes the `browser` and `slow` markers** (configured
 in `pyproject.toml` via `addopts = "-m 'not browser and not slow'"`). It runs without a
-real browser, ffmpeg, or any TTS backend — so it's the fast inner loop and the thing CI
-runs across the whole Python matrix.
+real browser, ffmpeg, or any TTS backend — it's dependency-light (pydantic / numpy / PIL /
+pyyaml only) — so it's the fast inner loop and the thing CI runs across the whole Python
+matrix. The two heavier tiers are opt-in via their markers:
+
+```bash
+uv run pytest                          # default: fast & dependency-light (not browser, not slow)
+uv run pytest -m slow                  # moviepy / ffmpeg compositing tests
+uv run pytest -m browser               # real Chromium renders via Playwright
+uv run pytest -m "browser or slow"     # the whole heavy integration suite
+```
 
 Markers (also in `pyproject.toml`, `--strict-markers` is on — unknown markers fail):
 
 | Marker    | Means |
 |-----------|-------|
-| `browser` | Needs a real Chromium via Playwright. |
-| `slow`    | Full or partial render through moviepy + ffmpeg. |
+| `browser` | Needs a real Chromium via Playwright — actual page captures. |
+| `slow`    | moviepy / ffmpeg compositing — full or partial render through the compose path. |
 | `piper`   | Needs the `piper` extra and a downloaded voice model. |
 
 Layout:
@@ -139,8 +142,12 @@ Layout:
   capture math, keyframes, compose logic, subtitles, audio, export, swatch, the
   device staging, the player, chapter rendering, TTS routing, and `check`. These
   must not touch the network, a browser, or ffmpeg.
-- `tests/integration/` — `test_smoke_render.py`, an end-to-end render against a
-  local `file://` fixture (marked `browser`/`slow`).
+- `tests/integration/` — the heavier tiers. `test_smoke_render.py` is an end-to-end
+  render against a local `file://` fixture (marked `browser`/`slow`).
+  `test_transitions_compositing.py` (marked `slow`) drives `concat_segments` with
+  solid-color clips and asserts each transition's **mid-overlap frame** — this is what
+  catches a transition silently degrading to a cut. When you add or change a transition,
+  add or update its assertion here (see the transitions seam below).
 - `tests/fixtures/` — local HTML + assets the tests drive (no network, no keys).
 - `tests/conftest.py` — shared fixtures.
 
@@ -217,7 +224,7 @@ recipe.)
 
 ## CI overview
 
-Two workflows under `.github/workflows/`, both with `working-directory: engine`.
+Three workflows under `.github/workflows/`, all with `working-directory: engine`.
 
 **`ci.yml`** (on push to `main`, all PRs, manual dispatch):
 
@@ -237,6 +244,18 @@ Two workflows under `.github/workflows/`, both with `working-directory: engine`.
 Because CI uses `uv sync --frozen`, **`uv.lock` is committed** and must stay in sync
 with `pyproject.toml`. If you change dependencies, run `uv sync` (or `uv lock`) and
 commit the updated lockfile, or `--frozen` will fail.
+
+**`preview.yml`** (on every `pull_request`):
+
+- Renders a fast, fully-**offline** example — the bundled `examples/showcase/acme-hero.yaml`
+  against `examples/showcase/acme.html` via a `file://` URL, with `--preview --gif --player`.
+- Uploads `demo.mp4`, `demo.gif`, and `demo.player.html` as the **`demo-preview`** artifact
+  (7-day retention) and posts/updates a single sticky PR comment linking the run.
+- **Non-blocking**: the render step is `continue-on-error`, so a broken preview never blocks a
+  merge, and it degrades gracefully on fork PRs (where the comment step lacks write access).
+
+This gives every PR a downloadable clip to eyeball alongside the diff — refreshed in place on
+each push.
 
 **`release.yml`** (on `v*` tags, manual dispatch):
 
@@ -304,6 +323,31 @@ them), which means three coordinated edits:
 If the annotation should steer the camera (most do), make sure its target flows into
 the keyframe track (`keyframes.py`) so zoom follows it. Add a unit test covering the
 spec parsing and any capture math.
+
+### A new (or changed) scene transition
+
+Transitions stitch the intro → content → outro segment boundaries. A scene sets
+`transition: { type, duration }` (default `crossfade`, `0.5s`); `duration` is the overlap
+length. The supported types are `cut`, `crossfade`, `dip`, `wipe`, `push`, and `zoom_blur` —
+`crossfade`/`wipe`/`push`/`zoom_blur` overlap adjacent segments by `duration` (the timeline
+shortens accordingly), while `cut` and `dip` do not.
+
+1. **`demoreel/spec.py`** — add the type to the transition `type` literal so the spec accepts
+   it.
+2. **`demoreel/compose.py`** — implement the blend in the `concat_segments` path. Honor
+   whether the type overlaps (and by how much) so the timeline math stays correct.
+3. **`tests/integration/test_transitions_compositing.py`** — add (or update) an assertion on
+   the transition's **mid-overlap frame**. This is required, not optional: the unit suite
+   can't see the composited pixels, so a missing assertion is how a transition silently
+   degrades to a cut without anything going red. The suite is marked `slow` — run
+   `uv run pytest -m slow` before pushing.
+
+### A new spec template (`demoreel init`)
+
+In the `init` scaffolder (`demoreel/cli.py`): templates are `minimal`, `tour`, `social`, and
+`hero`, and **every template must produce a spec that `demoreel validate` accepts**. Add a
+test that scaffolds your template and validates the output. The CLI smoke chain in CI
+(`init → validate → …`) is the first thing a fresh user hits, so keep it green.
 
 ---
 

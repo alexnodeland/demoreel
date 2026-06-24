@@ -82,15 +82,54 @@ def test_version_flag_exits_zero_and_prints_version(capsys: pytest.CaptureFixtur
 # --------------------------------------------------------------------------- init
 
 
-def test_init_writes_starter_and_returns_zero(tmp_path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_init_writes_minimal_template_and_returns_zero(
+    tmp_path, capsys: pytest.CaptureFixture[str]
+) -> None:
     dest = tmp_path / "d.yaml"
+    # stdin isn't a tty under pytest, so init runs non-interactively → the minimal template.
     rc = cli.main(["init", str(dest)])
     assert rc == 0
     assert dest.exists()
-    assert dest.read_text() == cli.EXAMPLE.read_text()
+    text = dest.read_text()
+    assert "title:" in text and "scenes:" in text
     out = capsys.readouterr().out
-    assert "✓ wrote starter spec" in out
+    assert "✓ wrote minimal spec" in out
     assert str(dest) in out
+
+
+def test_init_template_and_flags_build_a_valid_spec(
+    tmp_path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    dest = tmp_path / "hero.yaml"
+    rc = cli.main(
+        [
+            "init",
+            str(dest),
+            "--template",
+            "hero",
+            "--title",
+            "Acme Co",
+            "--url",
+            "https://acme.test",
+        ]
+    )
+    assert rc == 0
+    text = dest.read_text()
+    assert "Acme Co" in text and "https://acme.test" in text
+    out = capsys.readouterr().out
+    assert "✓ wrote hero spec" in out
+    # the scaffolded spec must itself validate
+    capsys.readouterr()
+    assert cli.main(["validate", str(dest)]) == 0
+    assert "✓ spec is valid" in capsys.readouterr().out
+
+
+def test_watch_fails_fast_on_invalid_spec(tmp_path, capsys: pytest.CaptureFixture[str]) -> None:
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("title: [unclosed\n")  # invalid YAML → load_spec raises before the loop
+    rc = cli.main(["watch", str(bad)])
+    assert rc == 1
+    assert "invalid spec" in capsys.readouterr().err
 
 
 def test_init_refuses_to_overwrite_existing(tmp_path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -128,8 +167,8 @@ def test_validate_prints_plan_header_and_scene_count(
 
     assert cli.main(["validate", str(spec)]) == 0
     out = capsys.readouterr().out
-    # plan() reports one row per scene; the starter ships three.
-    assert "3 scenes" in out
+    # plan() reports one row per scene; the minimal init template ships two.
+    assert "2 scenes" in out
     assert "narration" in out  # the table header
     assert "voice:" in out
 

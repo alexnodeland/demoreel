@@ -15,6 +15,7 @@ from .audio import normalize_wav
 from .capture import capture
 from .compose import compose
 from .spec import DemoSpec, ScrollAction, TypeAction, load_spec
+from .transitions import overlap_offset
 from .tts import synthesize
 
 Progress = Callable[[str], None]
@@ -147,8 +148,8 @@ def _chapter_markers(spec: DemoSpec, cap, intro_wav: str | None) -> list[tuple[f
 
             intro_dur = max(spec.intro.seconds, wav_duration(intro_wav) + 0.8)
     content_start = intro_dur
-    if intro_dur > 0 and spec.transition.type == "crossfade":
-        content_start = max(0.0, intro_dur - spec.transition.duration)
+    if intro_dur > 0:
+        content_start = max(0.0, intro_dur - overlap_offset(spec.transition))
 
     marks: list[tuple[float, str]] = []
     if spec.intro:

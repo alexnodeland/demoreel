@@ -105,6 +105,12 @@ makes the highlighted beats land.
 
 ### 4 — Author the spec
 
+**Scaffold first** — don't hand-write from a blank file. `demoreel init <slug>.yaml --template
+<minimal|tour|social|hero> --title "…" --url <url>` writes a render-ready spec from a template
++ answers (also accepts `--preset --resolution --device --voice-engine --transition -o`; runs
+interactively if you omit flags on a TTY). `social` = a 9:16 phone-frame cut; `hero` = a
+studio reel for a README. Every template validates clean. Then edit it down.
+
 Write to `demos/<slug>.yaml` (mp4 lands next to it). One action per scene. Apply the craft:
 
 **Narration** — speak benefits, not mechanics. One idea per scene. Read it aloud in your
@@ -114,6 +120,19 @@ head; if it's a mouthful, cut it. The engine paces each scene to its audio autom
 Reserve the tightest zooms for the payoff.
 
 **Cleanliness** — set `prelude: { freeze_anim: true, hide: [<banners you found>] }`.
+
+**Transitions** — per-scene `transition: { type, duration }` controls how each beat is
+stitched onto the previous one. Types: `cut`, `crossfade` (default), `dip`, `wipe`, `push`,
+`zoom_blur`; `duration` (default `0.5`s) is the overlap. `crossfade`/`wipe`/`push`/`zoom_blur`
+overlap adjacent scenes; `cut`/`dip` don't. Use a `push` or `zoom_blur` to punch into the
+payoff, `cut` for a brisk teardown. Applies to intro→content→outro boundaries too.
+
+**Brand kit** — for a repeatable team look, set a top-level `brand_kit: path/to/kit.yaml`
+(resolved relative to the spec). The kit's `accent` fans out to `brand.color`,
+`captions.accent`, and `cursor.color`; `background: [from, to]` becomes the gradient backdrop;
+plus `logo`, `font`, `name`, `title`, `watermark`. Precedence is **spec > kit > preset** — the
+kit fills gaps and beats the preset, while any explicit spec field wins. See
+`engine/examples/brand/acme.brand.yaml` (a kit) + `with-kit.yaml` (a spec overriding it).
 
 ```yaml
 title: "Onboarding"
@@ -159,6 +178,12 @@ contact sheet) and the `*.transcript.md`, and critique like a director:
 Edit the spec and re-preview until it's sharp. This loop is the difference between
 "functional" and "above and beyond" — do at least one pass.
 
+**Tighten the loop with `watch`:** `uv run demoreel watch <spec>.yaml [--interval 1.0] [--set
+K=V]` renders a `--preview` once, then re-renders whenever the spec *or* a referenced **local**
+asset changes (music, logo, brand kit, `inject_css`/`inject_js`, a `file://` page URL). Remote
+URLs aren't watched. It's polling-based (no extra deps); a broken mid-edit spec is logged and
+the watcher keeps running until it parses again. `Ctrl-C` stops cleanly.
+
 ### 7 — Final render
 
 Full quality, then announce when done (render is long-running):
@@ -186,10 +211,14 @@ post anything externally without the OK.
 **Annotations** (combine freely): `highlight · spotlight · callout{text,at} · arrow{to,dir} · chapter{title,subtitle}`.
 **Hints:** `zoom|no_zoom · focus · hold · pause · wait_for · narrate_after · persist · follow_new_tab`.
 **Presets:** `studio`(default) · `dark` · `light` · `minimal`. **Captions:** `pill|lower_third|karaoke`.
+**Transitions** (per-scene `transition: { type, duration }`): `cut · crossfade`(default)`· dip · wipe · push · zoom_blur`; `duration`(0.5s) = overlap.
 **Resolutions:** `720p · 1080p · 1440p · 4k`, social `vertical`(9:16) · `square`(1:1) · `portrait`(4:5), or `[w,h]`.
 **Frame shell:** `frame.device: phone|tablet|none` (a device bezel instead of the browser window).
 **Clean/redact:** `prelude: { freeze_anim, hide, mask, redact: [sel], redact_mode: scramble|block|label }`.
 **Templating:** `${VAR}` / `${VAR:-default}` anywhere in the YAML → `render … --set VAR=value` (per-tenant/per-release cuts).
+**Scaffold:** `demoreel init <slug>.yaml --template minimal|tour|social|hero --title … --url …` (interactive if no flags).
+**Watch:** `demoreel watch <spec>.yaml` re-previews on spec/local-asset change (`Ctrl-C` to stop).
+**Brand kit:** top-level `brand_kit: kit.yaml` (`accent`/`background`/`logo`/`font`/`name`/`title`/`watermark`); precedence **spec > kit > preset**.
 **Brand from a logo:** `demoreel theme path/to/logo.png` → prints a palette to paste into the spec.
 **Match narration to the action** — say exactly what the scene's action does (a click that
 *reveals* something still frames correctly; the camera probes the target before it acts).

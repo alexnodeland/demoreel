@@ -1,10 +1,12 @@
 """demoreel command-line interface.
 
 demoreel render scenes.yaml [-o out.mp4] [--headed] [--engine say] [--preview]
-                           [--storyboard] [--keep]
+                           [--storyboard] [--gif] [--webp] [--player] [--keep]
+demoreel watch scenes.yaml         # re-render a fast preview whenever the spec changes
 demoreel validate scenes.yaml      # parse + print the scene plan (no browser/TTS)
 demoreel check scenes.yaml         # open the page and verify every selector resolves
-demoreel init [path.yaml]          # write a starter spec
+demoreel init [path.yaml]          # scaffold a spec from a template (interactive or --flags)
+demoreel theme logo.png            # derive a brand palette from a logo
 demoreel voices                    # list available TTS voices
 demoreel doctor                    # check the environment is ready
 """
@@ -17,8 +19,6 @@ import sys
 from pathlib import Path
 
 from . import __version__
-
-EXAMPLE = Path(__file__).resolve().parent.parent / "examples" / "starter.yaml"
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -68,8 +68,33 @@ def main(argv: list[str] | None = None) -> int:
     pc.add_argument("--headed", action="store_true")
     add_set(pc)
 
-    pi = sub.add_parser("init", help="write a starter spec")
+    pw = sub.add_parser("watch", help="re-render a fast preview whenever the spec changes")
+    pw.add_argument("spec")
+    pw.add_argument("-o", "--output", help="output mp4 path (overrides spec.output)")
+    pw.add_argument("--engine", help="override voice engine")
+    pw.add_argument(
+        "--interval", type=float, default=1.0, help="poll interval in seconds (default 1.0)"
+    )
+    add_set(pw)
+
+    # init choices mirror scaffold.QUESTIONS so the CLI and the interactive prompts never drift.
+    from .scaffold import QUESTIONS
+
+    qc = {q.key: q.choices for q in QUESTIONS}
+    pi = sub.add_parser("init", help="scaffold a spec from a template (interactive or --flags)")
     pi.add_argument("path", nargs="?", default="demo.yaml")
+    pi.add_argument("--template", choices=qc["template"], help="starting template")
+    pi.add_argument("--title", help="demo title (output filename derives from it)")
+    pi.add_argument("--url", help="app URL to record")
+    pi.add_argument("--preset", choices=qc["preset"], help="theme preset")
+    pi.add_argument("--resolution", choices=qc["resolution"], help="output resolution")
+    pi.add_argument("--device", choices=qc["device"], help="device frame")
+    pi.add_argument("--voice-engine", dest="voice_engine", choices=qc["voice_engine"])
+    pi.add_argument("--transition", choices=qc["transition"], help="scene transition")
+    pi.add_argument("-o", "--output", help="output mp4 path")
+    pi.add_argument(
+        "-y", "--yes", action="store_true", help="non-interactive — use the template + flags only"
+    )
 
     pt = sub.add_parser("theme", help="derive a color palette from a logo image")
     pt.add_argument("logo", help="path to a logo image (png/jpg/svg-raster)")
@@ -80,6 +105,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     return {
         "render": _render,
+        "watch": _watch,
         "validate": _validate,
         "check": _check,
         "init": _init,
@@ -148,6 +174,47 @@ def _render(args) -> int:
     return 0
 
 
+def _watch(args) -> int:
+    import time
+
+    from .spec import load_spec
+    from .watch import collect_watch_paths, watch_loop
+
+    try:
+        load_spec(args.spec, _overrides(args))  # fail fast on a bad spec before looping
+    except Exception as exc:  # noqa: BLE001
+        return _report_error(args, "invalid spec", exc)
+
+    def render_fn() -> None:
+        from .render import render
+
+        render(
+            args.spec,
+            output=args.output,
+            voice_engine=args.engine,
+            preview=True,
+            overrides=_overrides(args),
+            progress=lambda m: print(f"  • {m}"),
+        )
+
+    def paths_fn() -> list[Path]:
+        # Re-parse each tick so newly-referenced assets get watched; a mid-edit broken spec
+        # must not kill the watcher — fall back to watching just the spec file until it parses.
+        try:
+            return collect_watch_paths(args.spec, load_spec(args.spec, _overrides(args)))
+        except Exception:  # noqa: BLE001 - keep watching through a broken edit
+            return [Path(args.spec)]
+
+    print(f"watching {args.spec} — edit and save to re-render · Ctrl-C to stop")
+    return watch_loop(
+        paths_fn,
+        render_fn,
+        sleep_fn=time.sleep,
+        interval=args.interval,
+        log=lambda m: print(f"  {m}"),
+    )
+
+
 def _validate(args) -> int:
     from .render import plan
 
@@ -202,16 +269,68 @@ def _check(args) -> int:
     return 0 if not bad else 1
 
 
+def _prompt(prompt: str, default: str, choices) -> str:
+    """Ask once, accepting the default on empty input; re-ask until a choice is valid."""
+    while True:
+        val = input(f"{prompt} [{default}]: ").strip() or default
+        if choices and val not in choices:
+            print(f"  choose one of: {', '.join(choices)}")
+            continue
+        return val
+
+
 def _init(args) -> int:
+    from .scaffold import QUESTIONS, build_spec, merge_answers, template_answers
+
     dest = Path(args.path)
     if dest.exists():
         print(f"✗ {dest} already exists", file=sys.stderr)
         return 1
-    if not EXAMPLE.exists():
-        print(f"✗ bundled example not found at {EXAMPLE}", file=sys.stderr)
+
+    # Flags the user actually passed (argparse leaves the rest None); these always win.
+    flag_answers = {
+        k: v
+        for k, v in {
+            "template": args.template,
+            "title": args.title,
+            "url": args.url,
+            "preset": args.preset,
+            "resolution": args.resolution,
+            "device": args.device,
+            "voice_engine": args.voice_engine,
+            "transition": args.transition,
+            "output": args.output,
+        }.items()
+        if v is not None
+    }
+
+    interactive = not args.yes and sys.stdin.isatty()
+    qmap = {q.key: q for q in QUESTIONS}
+
+    # Resolve the template first (flag > prompt > minimal) so its values seed later defaults.
+    template = flag_answers.get("template")
+    if template is None and interactive:
+        tq = qmap["template"]
+        template = _prompt(tq.prompt, tq.default, tq.choices)
+    template = template or "minimal"
+    try:
+        base = template_answers(template)
+    except ValueError as exc:
+        print(f"✗ {exc}", file=sys.stderr)
         return 1
-    dest.write_text(EXAMPLE.read_text())
-    print(f"✓ wrote starter spec → {dest}\n  edit it, then: demoreel render {dest}")
+
+    asked: dict[str, object] = {}
+    if interactive:
+        print(f"\nscaffolding a '{template}' demo — press enter to accept each default\n")
+        for q in QUESTIONS:
+            if q.key == "template":
+                continue
+            default = flag_answers.get(q.key) or base.get(q.key) or q.default
+            asked[q.key] = _prompt(q.prompt, str(default), q.choices)
+
+    final = merge_answers(base, asked, flag_answers)
+    dest.write_text(build_spec(final))
+    print(f"✓ wrote {template} spec → {dest}\n  edit it, then: demoreel render {dest}")
     return 0
 
 
