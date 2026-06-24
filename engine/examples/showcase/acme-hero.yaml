@@ -1,0 +1,54 @@
+# demoreel showcase hero — the README/site hero. Self-contained: renders against the bundled
+# examples/showcase/acme.html, so anyone can reproduce it. Every narration line names exactly
+# the element its action touches (no "say X, click Y" drift).
+#
+#   PAGE="file://$(pwd)/examples/showcase/acme.html"
+#   demoreel render examples/showcase/acme-hero.yaml --set PAGE="$PAGE" --gif --player
+
+title: "Acme Analytics"
+url: "${PAGE}"
+viewport: [1600, 900]
+fps: 30
+output: "acme-hero.mp4"
+preset: studio
+frame: { chrome_url: "app.acme.com" }
+camera: { zoom: 1.5 }
+captions: { style: pill }
+voice: { engine: piper, model: en_US-lessac-medium }
+
+intro:
+  title: "Acme Analytics"
+  subtitle: "ask your data anything"
+  seconds: 2.2
+  narrate: "Meet Acme — analytics you talk to."
+
+scenes:
+  # `name` feeds the --player chapter rail WITHOUT a full-screen interstitial (that's `chapter:`).
+  - name: "The prompt"
+    narrate: "It opens on a single prompt: ask anything about your data."
+    goto: "${PAGE}" # full URL (file:// pages have no "/" root to navigate to)
+    highlight: "h1"
+    hold: 1.8
+
+  - name: "New thread"
+    narrate: "Start a new thread."
+    click: "#newthread"
+    callout: { text: "one click to begin", at: "#newthread" }
+    hold: 1.2
+
+  - name: "Ask in plain English"
+    narrate: "Then ask in plain English — revenue by region, last ninety days."
+    type: { selector: "#q", text: "Revenue by region, last 90 days" }
+    hold: 1.4
+
+  - name: "Just answers"
+    narrate: "No SQL, no dashboards to wire up — just answers."
+    highlight: ".hint"
+    hold: 2.0
+
+outro:
+  title: "Make it move"
+  subtitle: "demoreel"
+  seconds: 2.4
+  cta: "github.com/our-nature/demoreel"
+  narrate: "This whole walkthrough? Rendered from a short YAML file, with demoreel."

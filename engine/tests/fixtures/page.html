@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>demoreel test fixture</title>
+    <style>
+      :root { color-scheme: light; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font: 16px/1.5 -apple-system, system-ui, sans-serif;
+        color: #111;
+        background: #fafafa;
+      }
+      header { padding: 48px 64px 24px; }
+      h1 { font-size: 44px; margin: 0 0 8px; }
+      main { padding: 0 64px 64px; max-width: 900px; }
+      .badge { display: inline-block; padding: 4px 12px; border-radius: 999px;
+               background: #e8f5e9; color: #1b5e20; font-weight: 600; }
+      button { font: inherit; padding: 12px 22px; border: 0; border-radius: 10px;
+               background: #6c5ce7; color: #fff; cursor: pointer; }
+      input { font: inherit; padding: 10px 14px; border: 1px solid #ccc; border-radius: 8px;
+              width: 320px; }
+      section { margin-top: 56px; }
+      #installation { margin-top: 600px; } /* below the fold — exercises scroll-into-view */
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Acme Analytics</h1>
+      <span class="badge" id="status">Ready</span>
+    </header>
+    <main>
+      <p>Everything starts here.</p>
+      <button id="start">Get started</button>
+      <section>
+        <label for="q">Search</label>
+        <input id="q" placeholder="Ask anything…" />
+      </section>
+      <section id="installation">
+        <h2>Installation</h2>
+        <p>One command and you're live.</p>
+      </section>
+    </main>
+  </body>
+</html>

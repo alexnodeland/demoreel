@@ -16,6 +16,10 @@ __pycache__/
 *.transcript.md
 *.storyboard.png
 
+# …but DO track intentional committed media (README hero, etc.)
+!docs/media/
+!docs/media/**
+
 # os
 .DS_Store
 

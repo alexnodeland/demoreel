@@ -28,20 +28,27 @@ def render(
     headed: bool = False,
     voice_engine: str | None = None,
     preview: bool = False,
+    overrides: dict[str, str] | None = None,
+    gif: bool = False,
+    webp: bool = False,
+    player: bool = False,
+    gif_width: int = 720,
+    gif_fps: int = 15,
 ) -> Path:
-    spec = load_spec(spec_path)
+    spec = load_spec(spec_path, overrides)
     if headed:
         spec.headless = False
     if voice_engine:
         spec.voice.engine = voice_engine  # type: ignore[assignment]
+    log = progress or (lambda *_: None)
     if preview:
-        # fast pass: small + low fps, no karaoke/sfx
+        # fast pass: small + low fps, no karaoke/sfx (cached narration is reused as-is)
         spec.quality.resolution = (1280, 720)
         spec.quality.scale = 1
         spec.fps = 15
         spec.captions.style = "pill"
         spec.audio.sfx.enabled = False
-    log = progress or (lambda *_: None)
+        log("Preview mode: 1280×720 @ 15fps, pill captions, SFX off")
 
     out = Path(output) if output else Path(spec.output)
     build_dir = out.parent / ".demoreel" / out.stem
@@ -54,7 +61,7 @@ def render(
     for i, scene in enumerate(spec.scenes):
         if scene.narrate:
             wav = build_dir / f"scene_{i:03d}.wav"
-            dur = synthesize(scene.narrate, wav, spec.voice)
+            dur = synthesize(scene.narrate, wav, spec.voice, log=log)
             if spec.audio.normalize:
                 normalize_wav(str(wav))  # amplitude only; duration unchanged
             narrations.append((str(wav), dur))
@@ -62,8 +69,8 @@ def render(
         else:
             narrations.append((None, 0.0))
 
-    intro_wav = _card_voice(spec.intro, build_dir / "intro.wav", spec)
-    outro_wav = _card_voice(spec.outro, build_dir / "outro.wav", spec)
+    intro_wav = _card_voice(spec.intro, build_dir / "intro.wav", spec, log)
+    outro_wav = _card_voice(spec.outro, build_dir / "outro.wav", spec, log)
 
     # 2. word alignment (karaoke captions) ------------------------------------------
     word_timings: dict[int, list] = {}
@@ -72,12 +79,15 @@ def render(
 
     # 3. capture --------------------------------------------------------------------
     log("Recording browser walkthrough…")
-    cap = capture(spec, narrations, build_dir)
+    cap = capture(spec, narrations, build_dir, log=log)
     log(f"Captured {cap.duration:.1f}s across {len(cap.scenes)} scenes.")
 
     # 4. compose --------------------------------------------------------------------
     log("Composing video (framing, camera, captions, audio)…")
     final = compose(spec, cap, scene_texts, build_dir, out, intro_wav, outro_wav, word_timings)
+
+    # 5. optional extra outputs (gif / webp / interactive player) --------------------
+    _extra_outputs(spec, cap, final, intro_wav, gif, webp, player, gif_width, gif_fps, log)
 
     if not keep_build:
         shutil.rmtree(build_dir, ignore_errors=True)
@@ -85,10 +95,82 @@ def render(
     return final
 
 
-def _card_voice(card, wav_path: Path, spec: DemoSpec) -> str | None:
+def _extra_outputs(
+    spec: DemoSpec,
+    cap,
+    final: Path,
+    intro_wav: str | None,
+    gif: bool,
+    webp: bool,
+    player: bool,
+    gif_width: int,
+    gif_fps: int,
+    log: Progress,
+) -> None:
+    if gif:
+        from .export import mp4_to_gif
+
+        out = mp4_to_gif(final, final.with_suffix(".gif"), width=gif_width, fps=gif_fps, log=log)
+        log(f"GIF → {out}")
+    if webp:
+        from .export import mp4_to_webp
+
+        out = mp4_to_webp(final, final.with_suffix(".webp"), width=gif_width, fps=gif_fps, log=log)
+        log(f"WebP → {out}")
+    if player:
+        from .player import build_player
+
+        vtt = final.with_suffix(".vtt")
+        out = build_player(
+            final.with_suffix(".player.html"),
+            video_filename=final.name,
+            title=spec.title,
+            chapters=_chapter_markers(spec, cap, intro_wav),
+            vtt_filename=vtt.name if vtt.exists() else None,
+            accent=spec.captions.accent,
+        )
+        log(f"Player → {out}")
+
+
+def _chapter_markers(spec: DemoSpec, cap, intro_wav: str | None) -> list[tuple[float, str]]:
+    """Chapter seek points on the FINAL timeline (intro card + each scene that names a chapter).
+
+    Mirrors compose's content offset: the content video starts after the intro card, minus the
+    crossfade overlap. Scene start times come from the capture timeline (real, not estimated)."""
+    from .spec import Chapter
+
+    intro_dur = 0.0
+    if spec.intro:
+        intro_dur = spec.intro.seconds
+        if intro_wav and Path(intro_wav).exists():
+            from .tts import wav_duration
+
+            intro_dur = max(spec.intro.seconds, wav_duration(intro_wav) + 0.8)
+    content_start = intro_dur
+    if intro_dur > 0 and spec.transition.type == "crossfade":
+        content_start = max(0.0, intro_dur - spec.transition.duration)
+
+    marks: list[tuple[float, str]] = []
+    if spec.intro:
+        marks.append((0.0, spec.intro.title))
+    for st in cap.scenes:
+        scene = spec.scenes[st.index]
+        label = None
+        if isinstance(scene.chapter, Chapter):
+            label = scene.chapter.title
+        elif isinstance(scene.chapter, str):
+            label = scene.chapter
+        elif scene.name:
+            label = scene.name
+        if label:
+            marks.append((round(content_start + st.t_start, 2), label))
+    return marks
+
+
+def _card_voice(card, wav_path: Path, spec: DemoSpec, log: Progress | None = None) -> str | None:
     if not card or not card.narrate:
         return None
-    synthesize(card.narrate, wav_path, spec.voice)
+    synthesize(card.narrate, wav_path, spec.voice, log=log)
     if spec.audio.normalize:
         normalize_wav(str(wav_path))
     return str(wav_path)
@@ -123,8 +205,10 @@ class PlanRow:
     est_seconds: float
 
 
-def plan(spec_path: str | Path) -> tuple[DemoSpec, list[PlanRow], float]:
-    spec = load_spec(spec_path)
+def plan(
+    spec_path: str | Path, overrides: dict[str, str] | None = None
+) -> tuple[DemoSpec, list[PlanRow], float]:
+    spec = load_spec(spec_path, overrides)
     rows: list[PlanRow] = []
     total = (spec.intro.seconds if spec.intro else 0.0) + (
         spec.outro.seconds if spec.outro else 0.0
@@ -137,14 +221,19 @@ def plan(spec_path: str | Path) -> tuple[DemoSpec, list[PlanRow], float]:
         est = max(words / 2.6, 0.0) + (scene.hold if scene.hold is not None else 0.6)
         est = max(est, 1.0) + (scene.pause or 0.0)
         rows.append(
-            PlanRow(i, action, f"{z:.2f}×" if z else "—", (scene.narrate or "").strip(), round(est, 1))
+            PlanRow(
+                i, action, f"{z:.2f}×" if z else "—", (scene.narrate or "").strip(), round(est, 1)
+            )
         )
         total += est
     return spec, rows, round(total, 1)
 
 
 def _has_annotation(scene) -> bool:
-    return any(getattr(scene, f) is not None for f in ("highlight", "spotlight", "callout", "arrow", "chapter"))
+    return any(
+        getattr(scene, f) is not None
+        for f in ("highlight", "spotlight", "callout", "arrow", "chapter")
+    )
 
 
 def _describe(scene) -> str:

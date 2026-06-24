@@ -84,11 +84,41 @@ def compose(
             cue_end = min(st.audio_start + st.narration_duration, duration)
             wt = word_timings.get(st.index)
             if cc.style == "karaoke" and wt:
-                _karaoke(overlays, srt_cues, wt, text, st.audio_start, OW, OH, margin, font,
-                         tcol, bcol, accent, cc.max_chars, duration)
+                _karaoke(
+                    overlays,
+                    srt_cues,
+                    wt,
+                    text,
+                    st.audio_start,
+                    OW,
+                    OH,
+                    margin,
+                    font,
+                    tcol,
+                    bcol,
+                    accent,
+                    cc.max_chars,
+                    duration,
+                )
             else:
-                _static_caps(overlays, srt_cues, text, st.audio_start, cue_end, build_dir,
-                             st.index, OW, OH, margin, font, tcol, bcol, accent, cc, duration)
+                _static_caps(
+                    overlays,
+                    srt_cues,
+                    text,
+                    st.audio_start,
+                    cue_end,
+                    build_dir,
+                    st.index,
+                    OW,
+                    OH,
+                    margin,
+                    font,
+                    tcol,
+                    bcol,
+                    accent,
+                    cc,
+                    duration,
+                )
 
     # brand -------------------------------------------------------------------------
     wm = brand.watermark_clip(spec, duration)
@@ -117,36 +147,70 @@ def compose(
 
     final = _concat(segments, spec.transition, concatenate_videoclips)
 
+    # The content clip's true start on the final timeline depends on the transition: a
+    # crossfade overlaps each segment with its predecessor by `duration` (padding=-d), so
+    # the content actually begins `duration` earlier than the intro card's length implies.
+    # cut/dip don't overlap. Shift caption sidecars by the real offset so .srt/.vtt stay
+    # in sync with the audio in the mp4.
+    caption_offset = intro_offset
+    if intro_offset > 0 and spec.transition.type == "crossfade":
+        caption_offset = max(0.0, intro_offset - spec.transition.duration)
+
     # encode ------------------------------------------------------------------------
     output.parent.mkdir(parents=True, exist_ok=True)
     final.write_videofile(
-        str(output), fps=spec.fps, codec="libx264", audio_codec="aac",
-        preset="medium", threads=4,
+        str(output),
+        fps=spec.fps,
+        codec="libx264",
+        audio_codec="aac",
+        preset="medium",
+        threads=4,
     )
 
     # sidecars ----------------------------------------------------------------------
     if srt_cues:
-        shifted = [Cue(c.start + intro_offset, c.end + intro_offset, c.text) for c in srt_cues]
+        shifted = [Cue(c.start + caption_offset, c.end + caption_offset, c.text) for c in srt_cues]
         write_srt(shifted, output.with_suffix(".srt"))
         write_vtt(shifted, output.with_suffix(".vtt"))
     if transcript_parts:
-        write_transcript(" ".join(transcript_parts), spec.title,
-                         output.with_suffix(".transcript.md"))
+        write_transcript(
+            " ".join(transcript_parts), spec.title, output.with_suffix(".transcript.md")
+        )
     return output
 
 
 # --------------------------------------------------------------------------- captions
 
 
-def _static_caps(overlays, srt_cues, text, start, end, build_dir, idx, OW, OH, margin, font,
-                 tcol, bcol, accent, cc, duration) -> None:
+def _static_caps(
+    overlays,
+    srt_cues,
+    text,
+    start,
+    end,
+    build_dir,
+    idx,
+    OW,
+    OH,
+    margin,
+    font,
+    tcol,
+    bcol,
+    accent,
+    cc,
+    duration,
+) -> None:
     from moviepy import ImageClip
 
     lower = cc.style == "lower_third"
     for j, cue in enumerate(split_into_cues(text, start, end, cc.max_chars)):
-        png, w, h = render_caption_png(
-            cue.text, build_dir / f"cap_{idx}_{j}.png", OW, font,
-            text_color=tcol, box_color=bcol,
+        png, _w, h = render_caption_png(
+            cue.text,
+            build_dir / f"cap_{idx}_{j}.png",
+            OW,
+            font,
+            text_color=tcol,
+            box_color=bcol,
             accent_edge=(*accent, 255) if lower else None,
         )
         dur = max(min(cue.end, duration) - cue.start, 0.4)
@@ -162,13 +226,29 @@ def _static_caps(overlays, srt_cues, text, start, end, build_dir, idx, OW, OH, m
         srt_cues.append(cue)
 
 
-def _karaoke(overlays, srt_cues, word_timings, script, audio_start, OW, OH, margin, font,
-             tcol, bcol, accent, max_chars, duration) -> None:
+def _karaoke(
+    overlays,
+    srt_cues,
+    word_timings,
+    script,
+    audio_start,
+    OW,
+    OH,
+    margin,
+    font,
+    tcol,
+    bcol,
+    accent,
+    max_chars,
+    duration,
+) -> None:
     # Use Whisper's timings, but display the known script words when the counts line up,
     # so captions never show mis-transcribed/dropped words.
     script_words = script.split()
     if len(script_words) == len(word_timings):
-        word_timings = [(sw, ws, we) for sw, (_w, ws, we) in zip(script_words, word_timings)]
+        word_timings = [
+            (sw, ws, we) for sw, (_w, ws, we) in zip(script_words, word_timings, strict=True)
+        ]
     words = [(w, audio_start + ws, audio_start + we) for (w, ws, we) in word_timings]
     for line in _group_words(words, max_chars):
         ls, le = line[0][1], min(line[-1][2], duration)
@@ -225,4 +305,4 @@ def _concat(clips, tcfg, concatenate_videoclips):
 
 
 def _scaled(size: int, out_h: int) -> int:
-    return max(14, int(round(size * out_h / 1080.0)))
+    return max(14, round(size * out_h / 1080.0))

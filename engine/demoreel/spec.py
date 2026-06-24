@@ -12,11 +12,13 @@ backdrop inside a macOS browser window, with spring-eased zoom-to-click.
 
 from __future__ import annotations
 
+import os
+import re
 from pathlib import Path
-from typing import Literal, Union
+from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # --------------------------------------------------------------------------- actions
 
@@ -87,6 +89,11 @@ class Scene(BaseModel):
     chapter: Chapter | str | None = None
     persist: bool = False  # keep annotations into the next scene (default: clear)
 
+    # multi-tab: when this scene's action opens a new tab (target=_blank / window.open),
+    # follow that tab's URL in the SAME recorded page so the flow stays in one continuous
+    # video. (Playwright records one video per page, so this is how a "new tab" stays on screen.)
+    follow_new_tab: bool = False
+
     # timing / presentation
     wait_for: str | None = None
     zoom: float | None = None
@@ -97,15 +104,22 @@ class Scene(BaseModel):
     transition: str | None = None  # override transition INTO this scene (cut|crossfade|dip)
 
     _ACTION_FIELDS = ("goto", "click", "hover", "type", "press", "scroll", "wait")
-    _FOCUS_FIELDS = ("focus", "callout", "arrow", "highlight", "spotlight", "click", "hover", "type")
+    _FOCUS_FIELDS = (
+        "focus",
+        "callout",
+        "arrow",
+        "highlight",
+        "spotlight",
+        "click",
+        "hover",
+        "type",
+    )
 
     @model_validator(mode="after")
-    def _at_most_one_action(self) -> "Scene":
+    def _at_most_one_action(self) -> Scene:
         present = [f for f in self._ACTION_FIELDS if getattr(self, f) is not None]
         if len(present) > 1:
-            raise ValueError(
-                f"scene has multiple actions {present}; use one action per scene"
-            )
+            raise ValueError(f"scene has multiple actions {present}; use one action per scene")
         return self
 
     def primary_action(self) -> tuple[str, object] | None:
@@ -138,7 +152,7 @@ class Scene(BaseModel):
     def has_focus_point(self) -> bool:
         return self.focus_selector() is not None
 
-    def effective_zoom(self, cam: "CameraConfig") -> float | None:
+    def effective_zoom(self, cam: CameraConfig) -> float | None:
         if self.no_zoom:
             return None
         if self.zoom is not None:
@@ -160,7 +174,7 @@ class GradientBg(BaseModel):
 class FrameConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     style: Literal["studio", "full_bleed"] = "studio"
-    background: Union[str, GradientBg, None] = None  # hex | gradient | image path
+    background: str | GradientBg | None = None  # hex | gradient | image path
     padding: float = 0.055  # fraction of min(OW, OH)
     radius: int = 14
     shadow: bool = True
@@ -169,6 +183,9 @@ class FrameConfig(BaseModel):
     chrome: Literal["browser", "none"] = "browser"
     chrome_url: str | None = None
     chrome_title: str | None = None
+    # Mobile device shell: draw a phone/tablet bezel instead of the macOS browser window.
+    # Best with a vertical/square resolution and a matching narrow viewport.
+    device: Literal["none", "phone", "tablet"] = "none"
 
 
 class CameraConfig(BaseModel):
@@ -242,6 +259,11 @@ class Prelude(BaseModel):
     model_config = ConfigDict(extra="forbid")
     hide: list[str] = Field(default_factory=list)  # selectors to hide (cookie banners, etc.)
     mask: list[str] = Field(default_factory=list)  # selectors to cover (dynamic regions)
+    # Live-data redaction: scrub the *text* of these selectors so real names/numbers/emails
+    # don't leak into a recording of a real app, while keeping layout intact. Reapplied after
+    # every navigation + scene action (and via a MutationObserver) so late-rendered data is caught.
+    redact: list[str] = Field(default_factory=list)
+    redact_mode: Literal["scramble", "block", "label"] = "scramble"
     freeze_anim: bool = False
     inject_css: str | None = None
     inject_js: str | None = None
@@ -251,36 +273,56 @@ class Prelude(BaseModel):
 # Defining this inside the model as ``_PRESETS`` turns it into a pydantic
 # ModelPrivateAttr descriptor, which ``cls._PRESETS`` then can't iterate over.
 _RESOLUTION_PRESETS = {
+    # landscape (16:9)
     "480p": (854, 480),
     "720p": (1280, 720),
     "1080p": (1920, 1080),
     "1440p": (2560, 1440),
     "4k": (3840, 2160),
+    "16:9": (1920, 1080),
+    # social / vertical / square — pair with a matching viewport (and often a phone `device`)
+    "vertical": (1080, 1920),  # 9:16 — reels / shorts / tiktok
+    "9:16": (1080, 1920),
+    "portrait": (1080, 1350),  # 4:5 — instagram portrait
+    "4:5": (1080, 1350),
+    "square": (1080, 1080),  # 1:1 — feed
+    "1:1": (1080, 1080),
 }
 
 
 class Quality(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    resolution: Union[str, tuple[int, int]] = "1080p"
+    resolution: str | tuple[int, int] = "1080p"
     scale: int = 1  # multiplies the capture viewport for a higher-res recording
 
-    @field_validator("resolution")
-    @classmethod
-    def _check(cls, v):
-        if isinstance(v, str) and v.lower() not in _RESOLUTION_PRESETS:
-            raise ValueError(
-                f"unknown resolution {v!r}; use {list(_RESOLUTION_PRESETS)} or [w,h]"
-            )
-        return v
+    @model_validator(mode="after")
+    def _normalize(self) -> Quality:
+        # mode="after" validators DO run on default values (unlike field_validators), so
+        # this is the single normalization point: resolve the preset/tuple to a concrete
+        # (w, h), reject non-positive sizes, and round down to even pixels because
+        # libx264 + yuv420p require even width/height (odd dims fail deep inside ffmpeg).
+        r = self.resolution
+        if isinstance(r, str):
+            key = r.lower()
+            if key not in _RESOLUTION_PRESETS:
+                raise ValueError(
+                    f"unknown resolution {r!r}; use {list(_RESOLUTION_PRESETS)} or [w,h]"
+                )
+            w, h = _RESOLUTION_PRESETS[key]
+        else:
+            w, h = int(r[0]), int(r[1])
+            if w <= 0 or h <= 0:
+                raise ValueError(f"resolution must be positive, got {(w, h)}")
+        self.resolution = (w - (w % 2), h - (h % 2))
+        return self
 
     @property
     def size(self) -> tuple[int, int]:
-        # Normalize at access time: field validators don't run on default values, so
-        # the default "1080p" may still be a string here.
         r = self.resolution
-        if isinstance(r, str):
-            return _RESOLUTION_PRESETS[r.lower()]
-        return (int(r[0]), int(r[1]))
+        if isinstance(r, str):  # pragma: no cover - normalized to a tuple in _normalize
+            w, h = _RESOLUTION_PRESETS[r.lower()]
+            return (w, h)
+        return r
 
 
 class TransitionConfig(BaseModel):
@@ -291,10 +333,23 @@ class TransitionConfig(BaseModel):
 
 class VoiceConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    engine: Literal["piper", "say", "openai", "elevenlabs"] = "piper"
-    model: str | None = None
+    engine: str = "piper"  # validated against the tts provider registry
+    model: str | None = None  # voice id/name (piper onnx, openai/kokoro voice, 11labs id)
     rate: float = 1.0
     volume: float = 1.0
+    fallback: list[str] = Field(default_factory=list)  # engines to try if `engine` fails
+    base_url: str | None = None  # OpenAI-compatible endpoint (engine: openai)
+    tts_model: str | None = None  # underlying model id override (openai/elevenlabs)
+
+    @model_validator(mode="after")
+    def _check_engine(self) -> VoiceConfig:
+        from .tts import provider_names
+
+        known = provider_names()
+        for eng in (self.engine, *self.fallback):
+            if eng not in known:
+                raise ValueError(f"unknown voice engine {eng!r}; choose from {known}")
+        return self
 
 
 class Card(BaseModel):
@@ -337,24 +392,74 @@ class DemoSpec(BaseModel):
     scenes: list[Scene] = Field(min_length=1)
 
     @model_validator(mode="after")
-    def _check_first_navigation(self) -> "DemoSpec":
+    def _check_first_navigation(self) -> DemoSpec:
         first = self.scenes[0]
         if first.goto is None and self.url is None:
-            raise ValueError(
-                "the first scene must `goto` a URL (or set a top-level `url`)"
-            )
+            raise ValueError("the first scene must `goto` a URL (or set a top-level `url`)")
         return self
 
     def output_size(self) -> tuple[int, int]:
         return self.quality.size
 
+    def aspect_mismatch(self) -> float:
+        """Relative gap between the capture viewport aspect and the output aspect.
 
-def load_spec(path: str | Path) -> DemoSpec:
-    """Parse a YAML spec, merge the selected preset under it, and validate."""
+        ~0 means they match (crisp, full-bleed). A larger value means the content window
+        will be letterboxed inside the output frame — surfaced as a warning, not an error.
+        """
+        vw, vh = self.viewport
+        ow, oh = self.output_size()
+        if not (vh and oh):
+            return 0.0
+        return abs(vw / vh - ow / oh) / (ow / oh)
+
+
+# ${VAR} or ${VAR:-default} — the colon-dash default mirrors POSIX shell parameter expansion.
+_VAR_RE = re.compile(r"\$\{(\w+)(?::-([^}]*))?\}")
+
+
+def substitute_vars(text: str, overrides: dict[str, str] | None = None) -> str:
+    """Expand ${VAR} / ${VAR:-default} in raw spec text from overrides + the environment.
+
+    Lets one spec render many demos (per-tenant URL, release tag, persona name) without
+    editing YAML. A missing variable with no default is an error, not a silent empty string —
+    a typo'd ${URL} should fail loudly rather than quietly produce a broken demo.
+    """
+    ns = {**os.environ, **(overrides or {})}
+
+    def repl(m: re.Match[str]) -> str:
+        name, default = m.group(1), m.group(2)
+        if name in ns:
+            return ns[name]
+        if default is not None:
+            return default
+        raise ValueError(
+            f"spec references ${{{name}}} but it is not set; pass --set {name}=… "
+            f"or use ${{{name}:-default}}"
+        )
+
+    return _VAR_RE.sub(repl, text)
+
+
+def _substitute_tree(obj: object, overrides: dict[str, str] | None) -> object:
+    """Expand ${VAR}s in the string *values* of a parsed YAML tree (never in keys or comments —
+    comments are already gone after parsing, which is exactly why we substitute post-parse)."""
+    if isinstance(obj, str):
+        return substitute_vars(obj, overrides)
+    if isinstance(obj, list):
+        return [_substitute_tree(v, overrides) for v in obj]
+    if isinstance(obj, dict):
+        return {k: _substitute_tree(v, overrides) for k, v in obj.items()}
+    return obj
+
+
+def load_spec(path: str | Path, overrides: dict[str, str] | None = None) -> DemoSpec:
+    """Parse a YAML spec, expand ${VAR}s, merge the selected preset under it, and validate."""
     from .themes import apply_preset
 
     raw = yaml.safe_load(Path(path).read_text())
     if not isinstance(raw, dict):
         raise ValueError(f"{path}: expected a YAML mapping at the top level")
-    merged = apply_preset(raw)
+    raw = _substitute_tree(raw, overrides)
+    merged = apply_preset(raw)  # type: ignore[arg-type]
     return DemoSpec.model_validate(merged)

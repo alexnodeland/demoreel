@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Acme Analytics</title>
+    <style>
+      /* A self-contained showcase app for the demoreel hero — a calm, premium dark
+         "ask your data" cold-start. Opaque dark background on purpose. */
+      :root {
+        --bg: #0d0d14;
+        --panel: #15151f;
+        --line: #23232f;
+        --ink: #ECECF4;
+        --muted: #8a8aa2;
+        --accent: #6c5ce7;
+        --teal: #5ee0c8;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: var(--bg); }
+      body {
+        font: 16px/1.55 ui-sans-serif, -apple-system, "Segoe UI", system-ui, sans-serif;
+        color: var(--ink);
+        display: flex; flex-direction: column; min-height: 100%;
+      }
+      header {
+        display: flex; align-items: center; gap: 12px;
+        padding: 22px 36px; border-bottom: 1px solid var(--line);
+      }
+      .mark {
+        width: 30px; height: 30px; border-radius: 9px;
+        background: linear-gradient(135deg, var(--accent), #4b3fc4);
+        display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 15px;
+      }
+      .brand { font-weight: 700; font-size: 17px; letter-spacing: -0.01em; }
+      .brand small { color: var(--muted); font-weight: 500; margin-left: 6px; }
+      main {
+        flex: 1; display: flex; flex-direction: column; align-items: center;
+        justify-content: center; text-align: center; padding: 40px 24px; gap: 8px;
+      }
+      h1 { font-size: 46px; letter-spacing: -0.03em; margin: 0; font-weight: 800; }
+      .sub { color: var(--muted); font-size: 19px; margin: 0 0 30px; }
+      #newthread {
+        font: 600 17px/1 inherit; color: #fff; cursor: pointer;
+        padding: 16px 28px; border: 0; border-radius: 13px;
+        background: linear-gradient(135deg, var(--accent), #5a4fd6);
+        box-shadow: 0 12px 30px -10px rgba(108, 92, 231, 0.7);
+      }
+      /* the thread view, revealed after New Thread */
+      #thread { display: none; width: 100%; max-width: 640px; text-align: left; }
+      #thread.on { display: block; }
+      .composer {
+        display: flex; gap: 10px; align-items: center;
+        background: var(--panel); border: 1px solid var(--line);
+        border-radius: 16px; padding: 8px 8px 8px 20px; box-shadow: 0 16px 50px -24px #000;
+      }
+      #q {
+        flex: 1; background: transparent; border: 0; outline: 0;
+        color: var(--ink); font: 18px/1.4 inherit; padding: 12px 0;
+      }
+      #q::placeholder { color: #5b5b72; }
+      .send {
+        width: 44px; height: 44px; border-radius: 11px; border: 0; cursor: pointer;
+        background: var(--accent); color: #fff; font-size: 19px;
+      }
+      .hint { color: var(--muted); font-size: 14px; margin: 14px 4px 0; }
+      .hint b { color: var(--teal); font-weight: 600; }
+      footer { padding: 18px 36px; color: #44445a; font-size: 13px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="mark">A</div>
+      <div class="brand">Acme<small>Analytics</small></div>
+    </header>
+    <main>
+      <div id="cold">
+        <h1>Ask anything about your data.</h1>
+        <p class="sub">Plain English in, answers out — no SQL, no dashboards to wire up.</p>
+        <button id="newthread">New Thread</button>
+      </div>
+      <div id="thread">
+        <div class="composer">
+          <input id="q" placeholder="How did revenue trend last quarter?" />
+          <button class="send" aria-label="Send">↑</button>
+        </div>
+        <p class="hint">Try: <b>revenue by region, last 90 days</b></p>
+      </div>
+    </main>
+    <footer>Acme Analytics · workspace: demo</footer>
+    <script>
+      document.getElementById('newthread').addEventListener('click', () => {
+        document.getElementById('cold').style.display = 'none';
+        document.getElementById('thread').classList.add('on');
+        document.getElementById('q').focus();
+      });
+    </script>
+  </body>
+</html>

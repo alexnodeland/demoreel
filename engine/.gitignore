@@ -3,7 +3,11 @@
 __pycache__/
 *.pyc
 .venv/
-uv.lock
+.pytest_cache/
+.ruff_cache/
+dist/
+# NOTE: uv.lock is committed on purpose — it pins a reproducible dependency set for
+# contributors and CI (`uv sync --frozen`). Do not add it back here.
 
 # rendered output (large binaries — don't commit)
 *.mp4

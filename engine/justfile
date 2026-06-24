@@ -1,0 +1,61 @@
+# demoreel engine — common dev tasks. Run `just` for the list.
+# Mirrors the CI gate so you can reproduce it locally.
+
+set shell := ["bash", "-cu"]
+
+# show available recipes
+default:
+    @just --list
+
+# one-time setup: sync deps (all extras + dev tools) and install the browser
+setup:
+    uv sync --all-extras --group dev
+    uv run playwright install chromium
+
+# sync deps without the optional engines (faster; piper/cloud/etc. omitted)
+sync:
+    uv sync --group dev
+
+# format the code
+fmt:
+    uv run ruff format .
+
+# lint (no changes)
+lint:
+    uv run ruff check .
+
+# type-check
+types:
+    uv run pyright
+
+# auto-fix lint + format
+fix:
+    uv run ruff check --fix .
+    uv run ruff format .
+
+# the fast unit suite (browser/slow markers excluded) with coverage
+test:
+    uv run pytest --cov=demoreel --cov-report=term-missing
+
+# the browser + slow integration suite (needs `just setup` first)
+test-browser:
+    uv run pytest -m "browser or slow"
+
+# everything CI runs: lint + format check + types + unit tests
+ci:
+    uv run ruff check .
+    uv run ruff format --check .
+    uv run pyright
+    uv run pytest --cov=demoreel --cov-report=term-missing
+
+# verify the local UX a fresh user hits first
+smoke:
+    uv run demoreel init /tmp/demoreel-smoke.yaml
+    uv run demoreel validate /tmp/demoreel-smoke.yaml
+    uv run demoreel doctor || true
+
+# render the bundled showcase hero to /tmp (uses macOS `say`; drop --engine for piper)
+hero:
+    PAGE="file://$(pwd)/examples/showcase/acme.html" \
+        uv run demoreel render examples/showcase/acme-hero.yaml \
+        --set PAGE="$PAGE" --engine say --gif --player -o /tmp/acme-hero.mp4

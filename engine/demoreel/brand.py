@@ -37,7 +37,7 @@ def card_clip(spec: DemoSpec, card: Card, narration_wav: str | None):
 def _render_card(spec: DemoSpec, card: Card) -> np.ndarray:
     w, h = spec.output_size()
     bg = _build_background(spec.frame.background, w, h)
-    img = Image.fromarray(bg, "RGB")
+    img = Image.fromarray(bg)  # mode inferred from (H,W,3)
     d = ImageDraw.Draw(img)
     light = _is_light(spec.frame.background)
     accent = _hex(spec.brand.color or spec.captions.accent)
@@ -156,7 +156,7 @@ def _paste_logo(img: Image.Image, spec: DemoSpec) -> None:
         x = (w - logo.width) // 2
         y = int(h * 0.72)
         img.paste(logo, (x, y), logo)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001, S110 - a missing/!bad logo shouldn't fail the card
         pass
 
 
