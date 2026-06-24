@@ -73,11 +73,15 @@ class CameraTrack:
         self,
         width: int,
         height: int,
-        easing: str = "spring",
-        overshoot: float = 0.06,
-        idle_drift: bool = True,
-        drift_amount: float = 0.010,
+        easing: str = "smoothstep",
+        overshoot: float = 0.0,
+        idle_drift: bool = False,
+        drift_amount: float = 0.006,
     ) -> None:
+        # Defaults intentionally mirror spec.CameraConfig (no overshoot, no idle drift) so a
+        # bare CameraTrack — e.g. the page-space track built in capture — never silently
+        # carries a different aesthetic than the spec. compose rebuilds the track via
+        # remap(...) with the real spec easing/drift values for the final composition.
         self.width = width
         self.height = height
         self.idle_drift = idle_drift

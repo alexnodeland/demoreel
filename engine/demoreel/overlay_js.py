@@ -251,18 +251,84 @@ OVERLAY_JS = r"""
       display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '22px',
       textAlign: 'center', maxWidth: '78%', padding: '0 6%',
     });
-    card.innerHTML =
-      '<div style="width:60px;height:5px;border-radius:3px;background:rgba(' + NS.cfg.accent + ',1)"></div>' +
-      '<div style="font:700 56px/1.12 -apple-system,system-ui,sans-serif;color:#f3f3f8;margin:0">' +
-      (title || '') + '</div>' +
-      (sub ? '<div style="font:400 26px/1.35 -apple-system,system-ui,sans-serif;color:#a9a9be;margin:0">' +
-        sub + '</div>' : '');
+    // Build nodes with textContent (not innerHTML) so chapter titles/subtitles can never
+    // inject markup or script into the page — same posture as bubble()/showKey().
+    const bar = document.createElement('div');
+    Object.assign(bar.style, {
+      width: '60px', height: '5px', borderRadius: '3px',
+      background: 'rgba(' + NS.cfg.accent + ',1)',
+    });
+    const h = document.createElement('div');
+    h.textContent = title || '';
+    h.style.font = '700 56px/1.12 -apple-system,system-ui,sans-serif';
+    h.style.color = '#f3f3f8';
+    card.appendChild(bar);
+    card.appendChild(h);
+    if (sub) {
+      const s = document.createElement('div');
+      s.textContent = sub;
+      s.style.font = '400 26px/1.35 -apple-system,system-ui,sans-serif';
+      s.style.color = '#a9a9be';
+      card.appendChild(s);
+    }
     wrap.appendChild(card);
     root().appendChild(wrap); NS.chapterEl = wrap;
     requestAnimationFrame(() => { wrap.style.opacity = '1'; });
   }
   function clearChapter() {
     if (NS.chapterEl) { NS.chapterEl.remove(); NS.chapterEl = null; }
+  }
+
+  // ----- live-data redaction -----
+  // Scrub the text of matched elements so real names/numbers/emails don't leak into a
+  // recording of a real app, while keeping layout intact. Deterministic (seeded by the
+  // original text) so a redacted value never shimmers frame-to-frame, and cached per text
+  // node so we never re-scramble. A MutationObserver re-applies to late-rendered content.
+  function scramble(s) {
+    let out = '';
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i], code = c.charCodeAt(0);
+      if (c >= '0' && c <= '9') out += String((code * 7 + i) % 10);
+      else if (c >= 'a' && c <= 'z') out += String.fromCharCode(97 + (code - 97 + 5 + i) % 26);
+      else if (c >= 'A' && c <= 'Z') out += String.fromCharCode(65 + (code - 65 + 5 + i) % 26);
+      else out += c;  // keep spaces/punctuation so word shape + alignment survive
+    }
+    return out;
+  }
+  function scrubText(s, mode) {
+    if (mode === 'block') return s.replace(/[^\s]/g, '•');
+    if (mode === 'label') return s.trim() ? '•••' : s;
+    return scramble(s);  // 'scramble'
+  }
+  function redactNode(node, mode) {
+    const w = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
+    let t;
+    while ((t = w.nextNode())) {
+      if (t.__demoreel_redacted) continue;
+      if (!t.nodeValue || !t.nodeValue.trim()) continue;
+      t.nodeValue = scrubText(t.nodeValue, mode);
+      t.__demoreel_redacted = true;
+    }
+  }
+  function applyRedaction() {
+    if (!NS.redact) return;
+    for (const sel of NS.redact.selectors) {
+      for (const el of document.querySelectorAll(sel)) redactNode(el, NS.redact.mode);
+    }
+  }
+  function redact(selectors, mode) {
+    NS.redact = { selectors: selectors || [], mode: mode || 'scramble' };
+    applyRedaction();
+    if (!NS.redactObserver) {
+      let queued = false;
+      NS.redactObserver = new MutationObserver(() => {
+        if (queued) return;
+        queued = true;
+        requestAnimationFrame(() => { queued = false; applyRedaction(); });
+      });
+      NS.redactObserver.observe(document.documentElement,
+        { childList: true, subtree: true, characterData: true });
+    }
   }
 
   // ----- input wiring -----

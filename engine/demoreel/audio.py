@@ -25,10 +25,13 @@ def _read_wav(path: str) -> tuple[np.ndarray, int, int]:
     with wave.open(path, "rb") as w:
         n, ch, rate, sw = w.getnframes(), w.getnchannels(), w.getframerate(), w.getsampwidth()
         raw = w.readframes(n)
-    dtype = {1: np.int8, 2: np.int16, 4: np.int32}.get(sw, np.int16)
-    data = np.frombuffer(raw, dtype=dtype).astype(np.float32)
-    if dtype != np.float32:
-        data /= float(np.iinfo(dtype).max)
+    if sw == 1:
+        # 8-bit PCM in WAV is UNSIGNED (0..255, midpoint 128) — reading it as signed int8
+        # inverts the waveform and adds a huge DC offset. Center and scale explicitly.
+        data = (np.frombuffer(raw, dtype=np.uint8).astype(np.float32) - 128.0) / 128.0
+    else:
+        dtype = {2: np.int16, 4: np.int32}.get(sw, np.int16)
+        data = np.frombuffer(raw, dtype=dtype).astype(np.float32) / float(np.iinfo(dtype).max)
     if ch > 1:
         data = data.reshape(-1, ch).mean(axis=1)
     return data, rate, ch
@@ -59,7 +62,7 @@ def normalize_wav(path: str, target_dbfs: float = -2.5, edge_ms: float = 6.0) ->
             data[:n] *= ramp
             data[-n:] *= ramp[::-1]
         _write_wav(path, data, rate)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001, S110 - normalization is best-effort polish
         pass
 
 

@@ -1,0 +1,43 @@
+# demoreel example — one spec, many demos via ${VAR} templating + live-data redaction.
+#
+#   demoreel validate parameterized.yaml --set TENANT=Acme
+#   demoreel render   parameterized.yaml --set TENANT=Acme --set APP_URL=https://app.acme.test
+#
+# ${VAR} / ${VAR:-default} expand from --set flags and the environment before parsing, so the
+# same spec renders a per-tenant cut without editing YAML. `prelude.redact` scrubs the *text* of
+# real data (names, numbers, emails) so a recording of a live app never leaks PII — layout stays
+# intact. Modes: scramble (default) · block (•••) · label.
+
+title: "${TENANT:-Your product} — a tour"
+url: "${APP_URL:-https://playwright.dev}"
+viewport: [1600, 900]
+output: "${TENANT:-demo}-tour.mp4"
+preset: studio
+
+prelude:
+  hide: [".cookie-banner", "#intercom-container"] # cosmetic chrome that distracts on camera
+  redact: [".user-name", ".account-id", "[data-pii]"] # scrub live data before it's recorded
+  redact_mode: scramble
+
+voice: { engine: piper, model: en_US-lessac-medium }
+
+intro:
+  title: "${TENANT:-Your product}"
+  subtitle: "a quick tour"
+  seconds: 2.2
+  narrate: "Here's a quick tour of ${TENANT:-the product}."
+
+scenes:
+  - chapter: "Overview"
+    narrate: "This is the home page."
+    goto: "/"
+    hold: 1.4
+
+  - narrate: "Everything starts here."
+    highlight: "text=Get started"
+    hold: 1.6
+
+outro:
+  title: "Thanks for watching"
+  seconds: 2.0
+  cta: "Questions? Reach out."

@@ -1,0 +1,53 @@
+# demoreel example — a 9:16 vertical social cut inside a phone frame (Reels / Shorts / TikTok).
+#
+#   demoreel validate social-vertical.yaml
+#   demoreel render   social-vertical.yaml --gif --player
+#
+# The phone `device` shell + a narrow mobile `viewport` + the `vertical` resolution combine
+# into a portrait demo with room above/below for captions and brand. Pair `--gif` for a
+# looping social preview and `--player` for a shareable chapter page.
+
+title: "Playwright — on the go"
+url: "https://playwright.dev"
+viewport: [414, 896] # iPhone-ish CSS viewport — drives the page at mobile width
+fps: 30
+output: "social-vertical.mp4"
+preset: studio
+
+quality:
+  resolution: vertical # 1080×1920 (9:16); also: square (1:1), portrait (4:5)
+frame:
+  device: phone # phone · tablet · none — draws a bezel + notch/home indicator
+camera: { zoom: 1.5 }
+captions: { style: pill, size: 46 }
+voice: { engine: piper, model: en_US-lessac-medium }
+
+intro:
+  title: "Playwright"
+  subtitle: "Reliable testing"
+  seconds: 1.8
+  narrate: "Playwright, in sixty seconds."
+
+scenes:
+  - chapter: "Home"
+    narrate: "This is the Playwright home page."
+    goto: "/"
+    hold: 1.2
+
+  - chapter: "Get started"
+    narrate: "Everything starts from Get started."
+    highlight: "text=Get started"
+    hold: 1.6
+
+  - narrate: "One command and you're installed."
+    click: "text=Get started"
+    spotlight: "text=Installation"
+    wait_for: "text=Installation"
+    hold: 2.0
+
+outro:
+  title: "Try Playwright"
+  subtitle: "playwright.dev"
+  seconds: 2.0
+  cta: "Read the docs →"
+  narrate: "Give it a try."

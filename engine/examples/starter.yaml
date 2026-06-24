@@ -1,0 +1,40 @@
+# A demoreel starter spec. Point `url` + selectors at your own app, then:
+#
+#   demoreel validate my-demo.yaml   # parse + scene plan (fast, no browser)
+#   demoreel check    my-demo.yaml   # verify selectors resolve (opens the page)
+#   demoreel render   my-demo.yaml   # full render → demo.mp4
+#   demoreel render   my-demo.yaml --preview   # fast low-res iteration
+#
+# Tip: prefer text= / role= selectors — they survive redesigns. For an authed app, capture
+# a Playwright storageState once (`playwright open --save-storage=auth.json <url>`) and set
+# `storage_state: auth.json` below.
+
+title: "My Product"
+url: "https://example.com"        # ← your app
+preset: studio                    # studio (default) · dark · light · minimal
+output: "demo.mp4"
+
+voice:    { engine: piper }       # piper (local) · say (macOS) · openai · elevenlabs
+captions: { style: pill }         # pill · lower_third · karaoke (karaoke needs --extra align)
+
+intro:
+  title: "My Product"
+  subtitle: "A 30-second tour"
+  narrate: "Here's a quick look at what you can do."
+
+scenes:
+  - narrate: "This is the home page."
+    goto: "/"
+    hold: 1.2
+
+  - narrate: "Here's the thing I want to show you."
+    highlight: "text=Get started"   # ← a real selector in your app
+    hold: 1.4
+
+  - narrate: "One click, and we're in."
+    click: "text=Get started"
+
+outro:
+  title: "Thanks for watching"
+  cta: "example.com"
+  narrate: "That's the tour — give it a try."

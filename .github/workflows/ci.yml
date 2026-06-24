@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Least privilege by default; no job here needs write access.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: engine
+
+jobs:
+  lint:
+    name: lint + types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: ruff (lint)
+        run: uv run ruff check .
+      - name: ruff (format)
+        run: uv run ruff format --check .
+      - name: pyright
+        run: uv run pyright
+
+  test:
+    name: test (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --python ${{ matrix.python-version }}
+      # The default suite is browser-free and dependency-light (markers exclude browser/slow).
+      - name: pytest
+        run: uv run pytest --cov=demoreel --cov-report=term-missing
+      # Highest-signal cheap smoke: the local UX a fresh user hits first.
+      - name: cli smoke (init → validate → doctor)
+        run: |
+          uv run demoreel init /tmp/smoke.yaml
+          uv run demoreel validate /tmp/smoke.yaml
+          uv run demoreel validate examples/playwright-tour.yaml
+          uv run demoreel doctor || true
+
+  render:
+    name: example render (browser)
+    runs-on: ubuntu-latest
+    # Browser/ffmpeg integration is flakier and slower — run on PRs and nightly, never block.
+    if: github.event_name != 'push'
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: install chromium
+        run: uv run playwright install --with-deps chromium
+      - name: render smoke (file:// fixture, no network/keys)
+        run: uv run pytest -m "browser or slow" -q
+      - name: upload rendered artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: render-smoke
+          path: |
+            engine/**/*.mp4
+            engine/**/*.srt
+          retention-days: 7
+          if-no-files-found: ignore

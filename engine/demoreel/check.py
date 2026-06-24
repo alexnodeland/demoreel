@@ -80,7 +80,7 @@ def _advance(page, spec: DemoSpec, kind: str, val) -> None:
         elif kind == "wait":
             page.wait_for_timeout(int(float(val) * 1000))
         page.wait_for_timeout(150)
-    except Exception:  # noqa: BLE001 - a broken selector is reported, not raised
+    except Exception:  # noqa: BLE001, S110 - a broken selector is reported, not raised
         pass
 
 

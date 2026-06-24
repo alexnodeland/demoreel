@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build sdist + wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      # Fail the release if the git tag doesn't match the package version (single source:
+      # engine/demoreel/__init__.py via hatch). Keeps tags and artifacts honest.
+      - name: check tag matches version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          PKG=$(cd engine && uv run python -c "import demoreel; print(demoreel.__version__)")
+          TAG="${GITHUB_REF_NAME#v}"
+          echo "package=$PKG tag=$TAG"
+          test "$PKG" = "$TAG" || { echo "::error::tag v$TAG != package $PKG"; exit 1; }
+      - name: build
+        run: cd engine && uv build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: engine/dist/*
+
+  github-release:
+    name: github release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+
+  pypi:
+    name: publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    # Opt-in: set repo variable PUBLISH_TO_PYPI=true after configuring a PyPI Trusted
+    # Publisher for this repo+workflow. No API token needed (OIDC).
+    if: ${{ startsWith(github.ref, 'refs/tags/v') && vars.PUBLISH_TO_PYPI == 'true' }}
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1

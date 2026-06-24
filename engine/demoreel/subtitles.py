@@ -13,11 +13,10 @@ from __future__ import annotations
 import textwrap
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Union
 
 from PIL import Image, ImageDraw, ImageFont
 
-FontT = Union[ImageFont.FreeTypeFont, ImageFont.ImageFont]
+FontT = ImageFont.FreeTypeFont | ImageFont.ImageFont
 
 _FONT_CANDIDATES = [
     "/System/Library/Fonts/Supplemental/Arial.ttf",
@@ -63,9 +62,11 @@ def split_into_cues(text: str, start: float, end: float, max_chars: int = 90) ->
     span = max(end - start, 0.01)
     for chunk in chunks:
         share = span * (len(chunk) / total_chars)
-        cues.append(Cue(t, min(t + share, end), chunk))
+        cs = min(t, end)  # never let accumulated drift push a cue start past `end`
+        ce = min(t + share, end)
+        cues.append(Cue(cs, max(ce, cs), chunk))
         t += share
-    cues[-1].end = end
+    cues[-1].end = end  # the last cue always lands exactly on the scene boundary
     return cues
 
 
@@ -124,8 +125,16 @@ def render_caption_png(
     return out_path, box_w, box_h
 
 
-def karaoke_clip(words, start: float, end: float, video_w: int, font: FontT,
-                 text_color: tuple, box_color: tuple, accent: tuple):
+def karaoke_clip(
+    words,
+    start: float,
+    end: float,
+    video_w: int,
+    font: FontT,
+    text_color: tuple,
+    box_color: tuple,
+    accent: tuple,
+):
     """A moviepy clip that highlights each word as it's spoken.
 
     ``words`` is a list of ``(word, w_start, w_end)`` in absolute seconds.
@@ -153,7 +162,7 @@ def karaoke_clip(words, start: float, end: float, video_w: int, font: FontT,
         ab = start + t
         img = Image.new("RGB", (box_w, box_h), box_color[:3])
         d = ImageDraw.Draw(img)
-        for (w, ws, we), ox in zip(words, offsets):
+        for (w, ws, we), ox in zip(words, offsets, strict=False):
             if ws <= ab <= we:
                 col = accent
             elif ab >= ws:
@@ -211,15 +220,16 @@ def _write_timed(cues: list[Cue], out_path: str | Path, vtt: bool) -> None:
     sep = "." if vtt else ","
     lines: list[str] = ["WEBVTT", ""] if vtt else []
     for i, cue in enumerate(cues, 1):
+        end = max(cue.end, cue.start + 0.001)  # never emit end <= start — players reject it
         lines.append(str(i))
-        lines.append(f"{_ts(cue.start, sep)} --> {_ts(cue.end, sep)}")
+        lines.append(f"{_ts(cue.start, sep)} --> {_ts(end, sep)}")
         lines.append(cue.text)
         lines.append("")
     Path(out_path).write_text("\n".join(lines), encoding="utf-8")
 
 
 def _ts(seconds: float, sep: str = ",") -> str:
-    ms = int(round(seconds * 1000))
+    ms = round(max(0.0, seconds) * 1000)
     h, ms = divmod(ms, 3_600_000)
     m, ms = divmod(ms, 60_000)
     s, ms = divmod(ms, 1000)

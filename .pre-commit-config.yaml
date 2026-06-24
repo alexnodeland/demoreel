@@ -1,0 +1,28 @@
+# Fast local gate for the demoreel engine. Install with: pre-commit install
+# (pyright + the full test suite run in CI, not here, to keep commits quick.)
+# Ruff auto-discovers engine/pyproject.toml by walking up from each file.
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      - id: ruff
+        name: ruff (lint + fix)
+        args: [--fix]
+        files: ^engine/.*\.py$
+      - id: ruff-format
+        name: ruff (format)
+        files: ^engine/.*\.py$
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        files: ^engine/
+      - id: end-of-file-fixer
+        files: ^engine/
+      - id: check-yaml
+        # engine specs + examples; exclude none — all should be valid YAML
+        files: \.(yaml|yml)$
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: [--maxkb=2048]

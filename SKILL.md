@@ -164,22 +164,36 @@ Edit the spec and re-preview until it's sharp. This loop is the difference betwe
 Full quality, then announce when done (render is long-running):
 
 ```bash
-uv run demoreel render <spec>.yaml -o <output>.mp4
+uv run demoreel render <spec>.yaml -o <output>.mp4 [--gif] [--webp] [--player]
 ```
-Outputs land beside the mp4: `.srt`, `.vtt`, `.transcript.md`.
+Outputs land beside the mp4: `.srt`, `.vtt`, `.transcript.md`, plus `--gif`/`--webp` (a
+looping clip for READMEs/social/chat) and `--player` (a self-contained HTML page with a
+clickable chapter rail — great for sharing a walkthrough as one link).
+
+**Pick the format to the channel:** a `vertical` (9:16) or `square` (1:1) cut inside a
+`frame: { device: phone }` shell for social; a wide `studio` mp4 for docs; a `--gif` for a
+README hero. Set `quality.resolution` to the target aspect and match the `viewport`.
 
 ### 8 — Deliver
 
-Report the path + runtime; mention the `.srt`/transcript (accessibility, sharing). Log/share
-per the consuming project's conventions. Don't post anything externally without the OK.
+Report the path + runtime; mention the `.srt`/transcript (accessibility, sharing) and any
+`--gif`/`--player` you produced. Log/share per the consuming project's conventions. Don't
+post anything externally without the OK.
 
 ## Quick spec cheatsheet
 
 **Actions** (one/scene): `goto · click · hover · type{selector,text} · press · scroll{to|by} · wait`.
 **Annotations** (combine freely): `highlight · spotlight · callout{text,at} · arrow{to,dir} · chapter{title,subtitle}`.
-**Hints:** `zoom|no_zoom · focus · hold · pause · wait_for · narrate_after · persist`.
+**Hints:** `zoom|no_zoom · focus · hold · pause · wait_for · narrate_after · persist · follow_new_tab`.
 **Presets:** `studio`(default) · `dark` · `light` · `minimal`. **Captions:** `pill|lower_third|karaoke`.
-Full schema → `engine/README.md`.
+**Resolutions:** `720p · 1080p · 1440p · 4k`, social `vertical`(9:16) · `square`(1:1) · `portrait`(4:5), or `[w,h]`.
+**Frame shell:** `frame.device: phone|tablet|none` (a device bezel instead of the browser window).
+**Clean/redact:** `prelude: { freeze_anim, hide, mask, redact: [sel], redact_mode: scramble|block|label }`.
+**Templating:** `${VAR}` / `${VAR:-default}` anywhere in the YAML → `render … --set VAR=value` (per-tenant/per-release cuts).
+**Brand from a logo:** `demoreel theme path/to/logo.png` → prints a palette to paste into the spec.
+**Match narration to the action** — say exactly what the scene's action does (a click that
+*reveals* something still frames correctly; the camera probes the target before it acts).
+Full schema → `engine/README.md` · `docs/spec-reference.md`.
 
 ## Troubleshooting
 

@@ -1,0 +1,23 @@
+# Keep CI actions and the engine's Python deps current. Grouped so a week's bumps
+# arrive as one reviewable PR per ecosystem instead of a swarm.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci
+
+  - package-ecosystem: uv
+    directory: "/engine"
+    schedule:
+      interval: weekly
+    groups:
+      python:
+        patterns: ["*"]
+    commit-message:
+      prefix: chore
