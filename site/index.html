@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<script>document.documentElement.classList.add('js')</script>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>demoreel — studio-quality demo videos from a spec</title>
+<meta name="description" content="demoreel turns a plain YAML spec into a studio-quality product demo — framed, zoomed, narrated. An open-source tool by the Our Nature studio." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink:        #ECECF2;
+    --ink-soft:   #A6A6B8;
+    --ink-mute:   #6A6A7C;
+    --canvas:     #08080C;
+    --line:       rgba(255,255,255,.09);
+    --line-soft:  rgba(255,255,255,.055);
+    --surface:    rgba(255,255,255,.025);
+    --indigo:     #6C5CE7;
+    --indigo-lit: #8E81F0;
+    --teal:       #5EE0C8;
+    --serif: "Instrument Serif", Georgia, serif;
+    --sans: "Hanken Grotesk", system-ui, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, monospace;
+    --maxw: 1140px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: var(--sans); color: var(--ink); background: var(--canvas);
+    line-height: 1.6; overflow-x: hidden; -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  /* atmospheric blooms + grain */
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: -2; pointer-events: none;
+    background:
+      radial-gradient(60vw 60vw at 78% -8%, rgba(108,92,231,.20), transparent 60%),
+      radial-gradient(46vw 46vw at 8% 14%, rgba(94,224,200,.07), transparent 55%),
+      radial-gradient(80vw 50vw at 50% 116%, rgba(108,92,231,.13), transparent 60%),
+      var(--canvas);
+  }
+  body::after {
+    content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .035;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  a { color: inherit; text-decoration: none; }
+  .wrap { width: 100%; max-width: var(--maxw); margin: 0 auto; padding: 0 28px; }
+  .eyebrow {
+    font: 500 12.5px/1 var(--mono); letter-spacing: .22em; text-transform: uppercase;
+    color: var(--teal); display: inline-flex; align-items: center; gap: 9px;
+  }
+  .eyebrow::before { content: ""; width: 22px; height: 1px; background: var(--teal); opacity: .6; }
+
+  /* ---------- nav ---------- */
+  nav {
+    position: sticky; top: 0; z-index: 50; backdrop-filter: blur(14px);
+    background: linear-gradient(180deg, rgba(8,8,12,.82), rgba(8,8,12,.45));
+    border-bottom: 1px solid var(--line-soft);
+  }
+  nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 66px; }
+  .brand { display: flex; align-items: center; gap: 11px; font-weight: 600; letter-spacing: -.01em; }
+  .brand .dot {
+    width: 22px; height: 22px; border-radius: 7px; position: relative;
+    background: linear-gradient(150deg, var(--indigo-lit), #4b3fc4);
+    box-shadow: 0 0 0 1px rgba(255,255,255,.12) inset, 0 6px 16px rgba(108,92,231,.4);
+  }
+  .brand .dot::after {
+    content: ""; position: absolute; inset: 6px 6px auto 6px; height: 3px; border-radius: 2px;
+    background: rgba(255,255,255,.85);
+  }
+  .nav-links { display: flex; align-items: center; gap: 26px; font-size: 14.5px; color: var(--ink-soft); }
+  .nav-links a:hover { color: var(--ink); }
+  .nav-links .ghost { color: var(--ink-mute); }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; font: 600 14.5px var(--sans);
+    padding: 10px 17px; border-radius: 11px; border: 1px solid var(--line);
+    color: var(--ink); transition: .25s cubic-bezier(.22,.61,.36,1); white-space: nowrap;
+  }
+  .btn:hover { border-color: rgba(255,255,255,.25); transform: translateY(-1px); background: var(--surface); }
+  .btn.primary {
+    background: linear-gradient(180deg, var(--indigo-lit), var(--indigo)); border-color: transparent;
+    box-shadow: 0 8px 24px -6px rgba(108,92,231,.6);
+  }
+  .btn.primary:hover { box-shadow: 0 12px 30px -6px rgba(108,92,231,.75); }
+
+  /* ---------- hero ---------- */
+  header { padding: clamp(56px, 9vw, 104px) 0 clamp(40px,6vw,72px); }
+  .hero { display: grid; grid-template-columns: 1.02fr .98fr; gap: clamp(32px, 5vw, 72px); align-items: center; }
+  h1 {
+    font-family: var(--serif); font-weight: 400; letter-spacing: -.015em;
+    font-size: clamp(44px, 6.4vw, 82px); line-height: .98; margin: 22px 0 0;
+  }
+  h1 em { font-style: italic; color: var(--indigo-lit); }
+  .lede { font-size: clamp(16.5px, 1.7vw, 19.5px); color: var(--ink-soft); max-width: 33ch; margin-top: 22px; }
+  .hero-cta { display: flex; gap: 13px; margin-top: 32px; flex-wrap: wrap; }
+  .hero-meta { display: flex; gap: 22px; margin-top: 34px; font: 13px/1.5 var(--mono); color: var(--ink-mute); flex-wrap: wrap; }
+  .hero-meta b { color: var(--ink-soft); font-weight: 500; }
+
+  /* ---------- the studio-frame illustration (the product, literally) ---------- */
+  .stage {
+    position: relative; aspect-ratio: 16/10; border-radius: 18px; overflow: hidden;
+    background: linear-gradient(150deg, #1C1C30 0%, #0B0B12 78%);
+    box-shadow: 0 40px 90px -30px rgba(0,0,0,.8), 0 0 0 1px var(--line-soft);
+  }
+  .stage .glow { position: absolute; inset: 0; background: radial-gradient(40% 30% at 64% 18%, rgba(108,92,231,.22), transparent 70%); }
+  .win {
+    position: absolute; left: 9%; right: 9%; top: 15%; border-radius: 11px; overflow: hidden;
+    background: #0d0d15; border: 1px solid rgba(255,255,255,.07);
+    box-shadow: 0 26px 50px -18px rgba(0,0,0,.7);
+  }
+  .chrome {
+    height: 34px; display: flex; align-items: center; gap: 7px; padding: 0 13px;
+    background: #20212c; border-bottom: 1px solid rgba(255,255,255,.05);
+  }
+  .tl { width: 11px; height: 11px; border-radius: 50%; }
+  .tl.r{background:#ff5f56}.tl.y{background:#ffbd2e}.tl.g{background:#27c93f}
+  .urlbar {
+    flex: 1; margin-left: 10px; height: 19px; border-radius: 10px; background: #12121a;
+    display: flex; align-items: center; justify-content: center;
+    font: 500 10px var(--mono); color: #6f7080; letter-spacing: .02em;
+  }
+  .page { padding: 30px 30px 36px; min-height: 168px; }
+  .page h3 { font: 700 19px var(--sans); letter-spacing: -.01em; }
+  .page p { font-size: 12.5px; color: var(--ink-mute); margin-top: 3px; }
+  .fakebtn {
+    display: inline-block; margin-top: 18px; font: 600 12.5px var(--sans); color: #fff;
+    padding: 9px 15px; border-radius: 9px; background: linear-gradient(180deg, #7d6cf0, #6c5ce7);
+    position: relative;
+  }
+  /* zoom ring + cursor that calmly glides — a literal demoreel beat */
+  .ring {
+    position: absolute; left: 30px; top: 95px; width: 132px; height: 44px; border-radius: 11px;
+    border: 2px solid rgba(108,92,231,.9); box-shadow: 0 0 0 3px rgba(108,92,231,.18);
+    opacity: 0; animation: ring 7s cubic-bezier(.22,.61,.36,1) infinite;
+  }
+  .cursor { position: absolute; left: 50%; top: 42%; width: 19px; filter: drop-shadow(0 2px 3px rgba(0,0,0,.5));
+    animation: glide 7s cubic-bezier(.22,.61,.36,1) infinite; }
+  @keyframes glide {
+    0%, 8%   { left: 64%; top: 64%; }
+    26%, 44% { left: 20%; top: 56%; }   /* settle on the button */
+    62%,100% { left: 64%; top: 40%; }
+  }
+  @keyframes ring {
+    0%,22% { opacity: 0; transform: scale(.96); }
+    30%    { opacity: 1; transform: scale(1); }
+    48%    { opacity: 1; transform: scale(1); }
+    60%,100%{ opacity: 0; transform: scale(1.02); }
+  }
+  .caption {
+    position: absolute; left: 50%; bottom: 6.5%; transform: translateX(-50%);
+    font: 500 13px var(--sans); color: #f4f4fa; padding: 8px 16px; border-radius: 11px;
+    background: rgba(8,8,16,.82); border: 1px solid rgba(255,255,255,.06); white-space: nowrap;
+  }
+  .stage-tag {
+    position: absolute; left: 14px; bottom: 12px; font: 500 10px var(--mono);
+    letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.32);
+  }
+
+  /* ---------- generic section ---------- */
+  section { padding: clamp(56px, 8vw, 96px) 0; border-top: 1px solid var(--line-soft); }
+  .sec-head { max-width: 60ch; }
+  .sec-head h2 {
+    font-family: var(--serif); font-weight: 400; letter-spacing: -.01em;
+    font-size: clamp(30px, 4vw, 46px); line-height: 1.05; margin-top: 16px;
+  }
+  .sec-head p { color: var(--ink-soft); margin-top: 14px; font-size: 16.5px; max-width: 52ch; }
+
+  /* philosophy band */
+  .philo { text-align: center; }
+  .philo blockquote {
+    font-family: var(--serif); font-style: italic; font-size: clamp(26px, 4.2vw, 50px);
+    line-height: 1.16; letter-spacing: -.01em; max-width: 18ch; margin: 0 auto; color: var(--ink);
+  }
+  .philo blockquote b { font-style: normal; color: var(--indigo-lit); }
+  .philo .by { margin-top: 26px; font: 500 13px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-mute); }
+
+  /* how it works pipeline */
+  .pipe { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 44px; }
+  .step { position: relative; padding: 26px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+  .step .n { font: 500 11px var(--mono); color: var(--teal); letter-spacing: .15em; }
+  .step h4 { font: 600 18px var(--sans); margin-top: 14px; letter-spacing: -.01em; }
+  .step p { color: var(--ink-soft); font-size: 14.5px; margin-top: 8px; }
+  .step .arr { position: absolute; right: -13px; top: 50%; transform: translateY(-50%); color: var(--ink-mute); z-index: 2; }
+  .pipe .step:last-child .arr { display: none; }
+
+  /* features */
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 44px; }
+  .card {
+    padding: 26px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface);
+    transition: .3s cubic-bezier(.22,.61,.36,1);
+  }
+  .card:hover { border-color: rgba(255,255,255,.2); transform: translateY(-3px); background: rgba(255,255,255,.045); }
+  .card .ic { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center;
+    background: rgba(108,92,231,.14); border: 1px solid rgba(108,92,231,.3); color: var(--indigo-lit); }
+  .card h4 { font: 600 16.5px var(--sans); margin-top: 16px; letter-spacing: -.01em; }
+  .card p { color: var(--ink-soft); font-size: 14px; margin-top: 7px; }
+
+  /* example */
+  .ex { display: grid; grid-template-columns: 1.1fr .9fr; gap: 40px; align-items: center; margin-top: 40px; }
+  .code {
+    border-radius: 16px; border: 1px solid var(--line); overflow: hidden;
+    background: linear-gradient(180deg, #0c0c14, #0a0a10); box-shadow: 0 30px 60px -30px rgba(0,0,0,.8);
+  }
+  .code .bar { height: 38px; display: flex; align-items: center; gap: 7px; padding: 0 14px; border-bottom: 1px solid var(--line-soft); }
+  .code .bar .fn { margin-left: 8px; font: 500 11.5px var(--mono); color: var(--ink-mute); }
+  pre { margin: 0; padding: 20px 22px; overflow-x: auto; font: 13px/1.7 var(--mono); }
+  .k { color: var(--teal); } .s { color: #c7b8ff; } .c { color: #5a5a6e; font-style: italic; } .p { color: var(--ink-soft); }
+  .ex-note h3 { font-family: var(--serif); font-weight: 400; font-size: 28px; line-height: 1.1; }
+  .ex-note p { color: var(--ink-soft); margin-top: 12px; font-size: 15px; }
+  .ex-note ul { list-style: none; margin-top: 18px; display: grid; gap: 10px; }
+  .ex-note li { display: flex; gap: 10px; font-size: 14.5px; color: var(--ink-soft); }
+  .ex-note li::before { content: "→"; color: var(--indigo-lit); }
+
+  /* install */
+  .term {
+    border-radius: 16px; border: 1px solid var(--line); overflow: hidden; margin-top: 36px;
+    background: #0a0a10;
+  }
+  .term .bar { height: 38px; display: flex; align-items: center; gap: 7px; padding: 0 14px; border-bottom: 1px solid var(--line-soft); }
+  .term pre { padding: 22px; font-size: 13.5px; line-height: 1.9; }
+  .term .pr { color: var(--teal); } .term .cm { color: #5a5a6e; }
+  .install-cta { display: flex; gap: 13px; margin-top: 26px; flex-wrap: wrap; }
+
+  /* footer */
+  footer { border-top: 1px solid var(--line-soft); padding: 60px 0 50px; }
+  .foot { display: flex; justify-content: space-between; gap: 30px; flex-wrap: wrap; align-items: flex-start; }
+  .foot .lock { max-width: 40ch; }
+  .foot .lock .nm { font-family: var(--serif); font-size: 23px; }
+  .foot .lock p { color: var(--ink-mute); font-size: 14px; margin-top: 10px; }
+  .foot .cols { display: flex; gap: 56px; flex-wrap: wrap; }
+  .foot h5 { font: 500 11px var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-mute); margin-bottom: 13px; }
+  .foot a { display: block; color: var(--ink-soft); font-size: 14.5px; padding: 4px 0; }
+  .foot a:hover { color: var(--ink); }
+  .legal { margin-top: 48px; padding-top: 22px; border-top: 1px solid var(--line-soft);
+    display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--ink-mute); }
+  .legal .leaf { color: var(--teal); }
+
+  /* reveal — progressive enhancement: visible by default, hidden only when JS is on */
+  .rv { transition: opacity .7s ease, transform .7s cubic-bezier(.22,.61,.36,1); }
+  .js .rv { opacity: 0; transform: translateY(18px); }
+  .rv.in { opacity: 1; transform: none; }
+
+  @media (max-width: 860px) {
+    .hero { grid-template-columns: 1fr; } .stage { order: -1; }
+    .pipe, .grid { grid-template-columns: 1fr; }
+    .step .arr { display: none; }
+    .ex { grid-template-columns: 1fr; }
+    .nav-links .ghost { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) { .cursor, .ring { animation: none; } .cursor{display:none} .ring{display:none} }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top"><span class="dot"></span> demoreel</a>
+    <div class="nav-links">
+      <a href="#how">How it works</a>
+      <a href="#features">Features</a>
+      <a href="#install" class="ghost">Install</a>
+      <a class="btn" href="https://github.com/our-nature/demoreel">GitHub ↗</a>
+    </div>
+  </div>
+</nav>
+
+<header id="top">
+  <div class="wrap hero">
+    <div>
+      <span class="eyebrow">Open source · by Our Nature</span>
+      <h1>Demo videos that look <em>filmed</em>, not generated.</h1>
+      <p class="lede">demoreel turns a plain YAML spec into a studio-quality product walkthrough — framed, zoomed, narrated, and paced with intent.</p>
+      <div class="hero-cta">
+        <a class="btn primary" href="https://github.com/our-nature/demoreel">Get started</a>
+        <a class="btn" href="#how">See how it works</a>
+      </div>
+      <div class="hero-meta">
+        <span><b>Playwright</b> capture</span>
+        <span><b>Piper</b> voiceover</span>
+        <span><b>1 file</b> → mp4</span>
+      </div>
+    </div>
+
+    <div class="stage rv">
+      <div class="glow"></div>
+      <div class="win">
+        <div class="chrome">
+          <span class="tl r"></span><span class="tl y"></span><span class="tl g"></span>
+          <span class="urlbar">app.localhost</span>
+        </div>
+        <div class="page">
+          <h3>Acme</h3>
+          <p>Ask anything about your data.</p>
+          <span class="fakebtn">New Thread</span>
+        </div>
+      </div>
+      <div class="ring"></div>
+      <svg class="cursor" viewBox="0 0 24 34"><path d="M2 2 L2 26 L8.5 20 L12.5 30 L16.5 28 L12.5 18.5 L21 18 Z" fill="white" stroke="#6C5CE7" stroke-width="1.6" stroke-linejoin="round"/></svg>
+      <div class="caption">Click New Thread to begin.</div>
+      <div class="stage-tag">rendered by demoreel</div>
+    </div>
+  </div>
+</header>
+
+<section class="philo">
+  <div class="wrap rv">
+    <blockquote>The machine made it. It shouldn't <b>look</b> like the machine made it.</blockquote>
+    <div class="by">A studio principle · Our Nature</div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="eyebrow">How it works</span>
+      <h2>Three steps from spec to screen.</h2>
+      <p>You write the story. The engine drives a real browser, records it, and composes the finished film — voiceover, captions, and camera included.</p>
+    </div>
+    <div class="pipe">
+      <div class="step rv">
+        <div class="n">01 · WRITE</div>
+        <h4>A declarative spec</h4>
+        <p>Scenes in YAML: a line of narration and one action — go, click, type, scroll. Diffable and reviewable like any other file.</p>
+        <svg class="arr" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 13h16M15 7l6 6-6 6"/></svg>
+      </div>
+      <div class="step rv" style="transition-delay:.08s">
+        <div class="n">02 · CAPTURE</div>
+        <h4>Drive &amp; record</h4>
+        <p>Playwright performs the flow with an animated cursor while recording — and notes exactly where every click lands.</p>
+        <svg class="arr" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 13h16M15 7l6 6-6 6"/></svg>
+      </div>
+      <div class="step rv" style="transition-delay:.16s">
+        <div class="n">03 · COMPOSE</div>
+        <h4>Frame &amp; finish</h4>
+        <p>Studio framing, zoom-to-click, voiceover, captions, music — composed into an mp4 with an .srt transcript beside it.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="eyebrow">What's in the frame</span>
+      <h2>Every detail of a hand-made demo, automated.</h2>
+    </div>
+    <div class="grid">
+      <div class="card rv">
+        <div class="ic">◳</div>
+        <h4>Studio framing</h4>
+        <p>The recording floats on a gradient backdrop inside a macOS browser window — rounded, shadowed, real.</p>
+      </div>
+      <div class="card rv" style="transition-delay:.05s">
+        <div class="ic">⊙</div>
+        <h4>Zoom that follows</h4>
+        <p>The camera eases toward each click and frames the element — calmly, with no drift or unnecessary motion.</p>
+      </div>
+      <div class="card rv" style="transition-delay:.1s">
+        <div class="ic">♪</div>
+        <h4>Voiceover</h4>
+        <p>Local open-source Piper by default — or macOS, OpenAI, ElevenLabs. Normalized and paced to each scene.</p>
+      </div>
+      <div class="card rv">
+        <div class="ic">”</div>
+        <h4>Captions &amp; karaoke</h4>
+        <p>Pill, lower-third, or word-by-word karaoke — plus .srt, .vtt, and a markdown transcript.</p>
+      </div>
+      <div class="card rv" style="transition-delay:.05s">
+        <div class="ic">✦</div>
+        <h4>Annotations</h4>
+        <p>Highlight, spotlight, callouts, arrows, and chapter cards — drawn in-page so they track real elements.</p>
+      </div>
+      <div class="card rv" style="transition-delay:.1s">
+        <div class="ic">◐</div>
+        <h4>Brand &amp; themes</h4>
+        <p>Studio, dark, light, minimal — plus a logo watermark, lower-third, and outro card. One line to reskin.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="eyebrow">The whole demo, in one file</span>
+      <h2>Readable enough to review in a pull request.</h2>
+    </div>
+    <div class="ex">
+      <div class="code rv">
+        <div class="bar"><span class="tl r"></span><span class="tl y"></span><span class="tl g"></span><span class="fn">onboarding.yaml</span></div>
+<pre><span class="k">title</span><span class="p">:</span> <span class="s">"Cold start"</span>
+<span class="k">url</span><span class="p">:</span> <span class="s">"http://localhost:3000"</span>
+<span class="k">preset</span><span class="p">:</span> studio
+<span class="k">scenes</span><span class="p">:</span>
+  <span class="p">-</span> <span class="k">narrate</span><span class="p">:</span> <span class="s">"Open the console."</span>
+    <span class="k">goto</span><span class="p">:</span> <span class="s">"/guide"</span>
+  <span class="p">-</span> <span class="k">narrate</span><span class="p">:</span> <span class="s">"Start a new thread."</span>
+    <span class="k">click</span><span class="p">:</span> <span class="s">"text=New Thread"</span>
+  <span class="p">-</span> <span class="k">narrate</span><span class="p">:</span> <span class="s">"Ask a question."</span>
+    <span class="k">type</span><span class="p">:</span> <span class="p">{</span> selector<span class="p">:</span> <span class="s">"#composer"</span><span class="p">,</span>
+            text<span class="p">:</span> <span class="s">"Who are my top clients?"</span> <span class="p">}</span>
+  <span class="p">-</span> <span class="k">narrate</span><span class="p">:</span> <span class="s">"Seconds later — the answer."</span>
+    <span class="k">press</span><span class="p">:</span> <span class="s">"Enter"</span>
+    <span class="k">spotlight</span><span class="p">:</span> <span class="s">"#results"</span>   <span class="c"># the payoff</span></pre>
+      </div>
+      <div class="ex-note rv" style="transition-delay:.08s">
+        <h3>Out comes a 1080p film.</h3>
+        <p>Framed on a gradient, narrated, captioned, and zoomed to the moment that matters — with a transcript beside it.</p>
+        <ul>
+          <li>Verify selectors against the live page before rendering</li>
+          <li>Preview fast, then render the final cut</li>
+          <li>One spec → mp4 · srt · vtt · transcript</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <div class="sec-head rv">
+      <span class="eyebrow">Install</span>
+      <h2>Drop it in as a Claude Code skill.</h2>
+      <p>Mount the repo, install once, and ask Claude Code to make a demo — or drive the engine yourself from the CLI.</p>
+    </div>
+    <div class="term rv">
+      <div class="bar"><span class="tl r"></span><span class="tl y"></span><span class="tl g"></span></div>
+<pre><span class="cm"># add the skill to your project</span>
+<span class="pr">$</span> git submodule add https://github.com/our-nature/demoreel .claude/skills/demo
+<span class="pr">$</span> cd .claude/skills/demo/engine
+<span class="pr">$</span> uv sync --extra piper && uv run playwright install chromium
+
+<span class="cm"># …then, in Claude Code</span>
+<span class="pr">›</span> /demo a walkthrough of the onboarding flow
+
+<span class="cm"># …or drive the engine directly</span>
+<span class="pr">$</span> uv run demoreel render onboarding.yaml -o out.mp4</pre>
+    </div>
+    <div class="install-cta">
+      <a class="btn primary" href="https://github.com/our-nature/demoreel">View on GitHub ↗</a>
+      <a class="btn" href="https://github.com/our-nature/demoreel#readme">Read the docs</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div class="foot">
+      <div class="lock">
+        <div class="brand"><span class="dot"></span> <span class="nm">demoreel</span></div>
+        <p>An Our Nature project. We build tools that feel made, not generated — calm, considered, and human.</p>
+      </div>
+      <div class="cols">
+        <div>
+          <h5>Project</h5>
+          <a href="https://github.com/our-nature/demoreel">Repository</a>
+          <a href="https://github.com/our-nature/demoreel#readme">Documentation</a>
+          <a href="https://github.com/our-nature/demoreel/blob/main/SKILL.md">The skill</a>
+        </div>
+        <div>
+          <h5>Studio</h5>
+          <a href="https://ournature.studio">ournature.studio</a>
+          <a href="https://github.com/our-nature">github.com/our-nature</a>
+        </div>
+      </div>
+    </div>
+    <div class="legal">
+      <span>MIT licensed · built with Playwright, moviepy &amp; Piper</span>
+      <span><span class="leaf">❡</span> Our Nature · <span id="yr"></span></span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // staggered reveals
+  const io = new IntersectionObserver((es) => {
+    es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+  }, { threshold: .12, rootMargin: "0px 0px -8% 0px" });
+  document.querySelectorAll('.rv').forEach(el => io.observe(el));
+  // hero stage reveals immediately
+  requestAnimationFrame(() => document.querySelector('.stage')?.classList.add('in'));
+  // year
+  document.getElementById('yr').textContent = new Date().getFullYear();
+</script>
+</body>
+</html>

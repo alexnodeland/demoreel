@@ -1,5 +1,7 @@
 # demoreel
 
+**[View the landing page →](https://our-nature.github.io/demoreel/)**
+
 **Studio-quality demo videos, generated from a YAML spec.** A [Claude Code](https://claude.com/claude-code)
 skill + a standalone Python engine that drives a real browser (Playwright) and renders a
 finished `.mp4` that looks hand-made — the kind of polished product walkthrough you'd
