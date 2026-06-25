@@ -1,0 +1,26 @@
+# A minimal spec that pulls its look from a reusable brand kit.
+#
+#   demoreel render with-kit.yaml
+#
+# The `brand_kit:` directive loads acme.brand.yaml and merges it UNDER this spec as
+# defaults. The two fields below override the kit to show that the spec always wins:
+#   - brand.title overrides the kit's lower-third title
+#   - captions.accent overrides the kit's accent for captions only
+# Everything else (logo, gradient, font, name, cursor color, watermark) comes from the kit.
+
+brand_kit: acme.brand.yaml
+
+title: Acme Q3 Walkthrough
+url: https://example.com
+
+brand:
+  title: Q3 Release   # overrides kit's "Product Demo"
+
+captions:
+  accent: "#00B894"   # overrides kit accent for captions only
+
+scenes:
+  - narrate: Welcome to the Acme Q3 walkthrough.
+    goto: https://example.com
+  - narrate: Here's the headline.
+    highlight: h1

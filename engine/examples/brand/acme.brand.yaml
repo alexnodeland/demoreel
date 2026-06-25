@@ -1,0 +1,15 @@
+# Acme — reusable brand kit.
+#
+# Merged UNDER any spec that references it via `brand_kit: acme.brand.yaml`.
+# Every field here is a DEFAULT; a spec's own explicit values always win.
+# `accent` maps to three spec leaves: brand.color, captions.accent, cursor.color.
+
+accent: "#FF6B00"                  # brand accent — cursor, caption accent, watermark tint
+background: ["#1A1206", "#0A0703"] # gradient backdrop [from, to]
+logo: ./assets/acme-logo.png       # corner watermark logo (placeholder path)
+font: Inter                        # caption font family
+name: Acme                         # lower-third name
+title: Product Demo                # lower-third title
+watermark: true
+watermark_position: bottom-right
+watermark_opacity: 0.5

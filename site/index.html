@@ -393,6 +393,21 @@
         <h4>Parameterized &amp; safe</h4>
         <p>Template one spec into many with <code>${VAR}</code> + <code>--set</code>, and redact real names and numbers on camera.</p>
       </div>
+      <div class="card rv">
+        <div class="ic">⇥</div>
+        <h4>Scene transitions</h4>
+        <p>Cut, dip, crossfade — or a <code>wipe</code>, <code>push</code>, or whip-zoom between beats. <code>transition: { type, duration }</code>, per scene.</p>
+      </div>
+      <div class="card rv" style="transition-delay:.05s">
+        <div class="ic">◧</div>
+        <h4>Brand kits</h4>
+        <p>One <code>brand_kit:</code> file carries your accent, gradient, logo, and lower-third across every demo — the spec still wins where it sets a value.</p>
+      </div>
+      <div class="card rv" style="transition-delay:.1s">
+        <div class="ic">◔</div>
+        <h4>Scaffold &amp; watch</h4>
+        <p><code>demoreel init</code> scaffolds a spec from a template — <code>minimal</code>, <code>tour</code>, <code>social</code>, <code>hero</code> — then <code>watch</code> re-previews the moment you save.</p>
+      </div>
     </div>
   </div>
 </section>
@@ -418,6 +433,7 @@
     <span class="k">type</span><span class="p">:</span> <span class="p">{</span> selector<span class="p">:</span> <span class="s">"#composer"</span><span class="p">,</span>
             text<span class="p">:</span> <span class="s">"Who are my top clients?"</span> <span class="p">}</span>
   <span class="p">-</span> <span class="k">narrate</span><span class="p">:</span> <span class="s">"Seconds later — the answer."</span>
+    <span class="k">transition</span><span class="p">:</span> <span class="p">{</span> type<span class="p">:</span> push <span class="p">}</span>
     <span class="k">press</span><span class="p">:</span> <span class="s">"Enter"</span>
     <span class="k">spotlight</span><span class="p">:</span> <span class="s">"#results"</span>   <span class="c"># the payoff</span></pre>
       </div>

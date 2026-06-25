@@ -1,0 +1,111 @@
+name: Preview render
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+# pull-requests: write is needed to post/update the sticky preview comment.
+# (For fork PRs the token is read-only; the comment step swallows that gracefully.)
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: engine
+
+jobs:
+  render:
+    name: preview render (browser)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: install chromium
+        run: uv run playwright install --with-deps chromium
+      # acme-hero.yaml is the only fully-offline bundled example: it renders against the
+      # bundled examples/showcase/acme.html via a file:// URL (no network, no API keys).
+      - name: render preview (file:// fixture, no network/keys)
+        id: render
+        continue-on-error: true
+        run: |
+          mkdir -p /tmp/preview
+          PAGE="file://$(pwd)/examples/showcase/acme.html"
+          uv run demoreel render examples/showcase/acme-hero.yaml \
+            --set PAGE="$PAGE" \
+            --preview --gif --gif-fps 12 --player \
+            -o /tmp/preview/demo.mp4
+          if [ -f /tmp/preview/demo.mp4 ]; then
+            echo "rendered=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "rendered=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: upload preview artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-preview
+          path: |
+            /tmp/preview/demo.mp4
+            /tmp/preview/demo.gif
+            /tmp/preview/demo.player.html
+          retention-days: 7
+          if-no-files-found: warn
+      - name: sticky preview comment
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Only same-repo PRs get a writable token; fork PRs are read-only, so the
+            // create/update calls are wrapped in try/catch to never hard-fail the job.
+            const pr = context.payload.pull_request;
+            if (!pr) {
+              core.info("No pull_request in context (workflow_dispatch); skipping comment.");
+              return;
+            }
+            const marker = "<!-- demoreel-preview -->";
+            const runUrl =
+              `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}` +
+              `/actions/runs/${context.runId}`;
+            const rendered = "${{ steps.render.outputs.rendered }}" === "true";
+            const status = rendered
+              ? "Preview rendered."
+              : "Preview render failed (this never blocks the PR).";
+            const body =
+              `${marker}\n### Demo preview\n${status}\n\n` +
+              `Download the clip from the run's artifacts: [demo-preview](${runUrl}).`;
+            try {
+              const { data: comments } = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+              });
+              const existing = comments.find((c) => c.body && c.body.includes(marker));
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: existing.id,
+                  body,
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr.number,
+                  body,
+                });
+              }
+            } catch (err) {
+              core.warning(`Could not post sticky preview comment (fork PR?): ${err.message}`);
+            }

@@ -15,7 +15,7 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -327,7 +327,10 @@ class Quality(BaseModel):
 
 class TransitionConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    type: Literal["cut", "crossfade", "dip"] = "crossfade"
+    # cut/crossfade/dip are the classic set; wipe/push/zoom_blur are overlapping
+    # transitions implemented in demoreel.transitions (they overlap segments by `duration`
+    # like crossfade, so the caption-sync offset is centralized in transitions.overlap_offset).
+    type: Literal["cut", "crossfade", "dip", "wipe", "push", "zoom_blur"] = "crossfade"
     duration: float = 0.5
 
 
@@ -454,12 +457,22 @@ def _substitute_tree(obj: object, overrides: dict[str, str] | None) -> object:
 
 
 def load_spec(path: str | Path, overrides: dict[str, str] | None = None) -> DemoSpec:
-    """Parse a YAML spec, expand ${VAR}s, merge the selected preset under it, and validate."""
+    """Parse a YAML spec, expand ${VAR}s, fold in an optional brand kit, merge the selected
+    preset under it, and validate. Precedence (highest wins): spec > brand kit > preset."""
     from .themes import apply_preset
 
     raw = yaml.safe_load(Path(path).read_text())
     if not isinstance(raw, dict):
         raise ValueError(f"{path}: expected a YAML mapping at the top level")
-    raw = _substitute_tree(raw, overrides)
+    raw = cast(dict, _substitute_tree(raw, overrides))  # tree-walk preserves the top mapping
+    # Brand kit: a reusable look (accent/palette/logo/font/lower-third/watermark) merged UNDER
+    # the spec so the spec's own values win. Folded in before apply_preset, which then only
+    # fills gaps neither the spec nor the kit set — net precedence spec > kit > preset.
+    kit_path = raw.pop("brand_kit", None)
+    if kit_path is not None:
+        from .brand_kit import kit_overlay, load_brand_kit, merge_under
+
+        kit = load_brand_kit(Path(path).parent / str(kit_path))
+        raw = merge_under(raw, kit_overlay(kit))
     merged = apply_preset(raw)  # type: ignore[arg-type]
     return DemoSpec.model_validate(merged)
